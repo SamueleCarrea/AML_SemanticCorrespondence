@@ -1,0 +1,2 @@
+{"id": "train-001", "source_keypoints": [[0.10, 0.10], [0.25, 0.70]], "target_keypoints": [[0.12, 0.12], [0.28, 0.72]], "normalization_factor": 1.0}
+{"id": "train-002", "source_keypoints": [[0.50, 0.40], [0.60, 0.80]], "target_keypoints": [[0.52, 0.38], [0.58, 0.82]], "normalization_factor": 1.0}

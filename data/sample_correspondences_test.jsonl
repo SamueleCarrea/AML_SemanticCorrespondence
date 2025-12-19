@@ -1,0 +1,2 @@
+{"id": "test-001", "source_keypoints": [[0.05, 0.15], [0.85, 0.90]], "target_keypoints": [[0.07, 0.18], [0.86, 0.89]], "normalization_factor": 1.0}
+{"id": "test-002", "source_keypoints": [[0.22, 0.33], [0.48, 0.51]], "target_keypoints": [[0.21, 0.36], [0.47, 0.54]], "normalization_factor": 1.0}
