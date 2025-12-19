@@ -34,23 +34,23 @@ def load_config(path: str | Path, overrides: Iterable[str] | None = None) -> dic
 
     Args:
         path: Path to the YAML configuration file.
-        overrides: Iterable of strings in the form \"key.subkey=value\".
+        overrides: Iterable of strings in the form "key.subkey=value".
 
     Returns:
         Parsed configuration as a dictionary with applied overrides.
     """
     config_path = Path(path)
-    with config_path.open(\"r\", encoding=\"utf-8\") as f:
+    with config_path.open("r", encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     if overrides:
         for override in overrides:
-            if \"=\" not in override:
-                raise ValueError(f\"Invalid override '{override}'. Expected format key.subkey=value\")
-            key_str, raw_value = override.split(\"=\", 1)
-            keys = [k for k in key_str.split(\".\") if k]
+            if "=" not in override:
+                raise ValueError(f"Invalid override '{override}'. Expected format key.subkey=value")
+            key_str, raw_value = override.split("=", 1)
+            keys = [k for k in key_str.split(".") if k]
             if not keys:
-                raise ValueError(f\"Invalid override '{override}'. No keys provided.\")
+                raise ValueError(f"Invalid override '{override}'. No keys provided.")
             value = _parse_value(raw_value)
             _set_nested(config, keys, value)
 

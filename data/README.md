@@ -25,5 +25,5 @@ You can then initialize the dataset with:
 ```python
 from dataset import SPairDataset
 
-dataset = SPairDataset(root=\"data/SPair-71k\", split=\"train\", long_side=480)
+dataset = SPairDataset(root="data/SPair-71k", split="train", long_side=480)
 ```
