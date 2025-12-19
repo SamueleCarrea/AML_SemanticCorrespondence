@@ -78,9 +78,14 @@ class SPairDataset(Dataset):
             for pair_file in os.listdir(cat_dir):
                 if not pair_file.endswith('.json'):
                     continue
-                    
-                with open(os.path.join(cat_dir, pair_file), 'r') as f:
-                    pair_data = json.load(f)
+                
+                pair_path = os.path.join(cat_dir, pair_file)
+                try:
+                    with open(pair_path, 'r') as f:
+                        pair_data = json.load(f)
+                except (json.JSONDecodeError, IOError) as e:
+                    print(f"Warning: Failed to load {pair_path}: {e}")
+                    continue
                     
                 if isinstance(pair_data, list):
                     for pair in pair_data:

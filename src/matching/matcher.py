@@ -173,7 +173,7 @@ def ransac_filter(
         
         return filtered_src_kps, filtered_trg_kps, inlier_mask
     
-    except Exception as e:
+    except (ValueError, np.linalg.LinAlgError) as e:
         print(f"RANSAC failed: {e}")
         inlier_mask = np.ones(len(src_kps), dtype=bool)
         return src_kps, trg_kps, inlier_mask

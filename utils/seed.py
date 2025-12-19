@@ -10,6 +10,11 @@ def set_seed(seed: int = 42):
     
     Args:
         seed: Random seed value
+    
+    Note:
+        Setting cudnn.benchmark=False ensures deterministic behavior but may 
+        impact performance. For faster training/inference with reproducibility,
+        consider setting only cudnn.deterministic=True.
     """
     random.seed(seed)
     np.random.seed(seed)

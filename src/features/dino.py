@@ -133,9 +133,9 @@ class Dinov2FeatureExtractor(nn.Module):
         try:
             # Try to load DINOv2 from torch.hub
             self.model = torch.hub.load('facebookresearch/dinov2', model_name)
-        except:
+        except (RuntimeError, ConnectionError, OSError) as e:
             # Fallback to timm if torch.hub fails
-            print(f"Failed to load {model_name} from torch.hub, using timm fallback")
+            print(f"Failed to load {model_name} from torch.hub ({e}), using timm fallback")
             self.model = timm.create_model('vit_small_patch14_dinov2.lvd142m', pretrained=True)
         
         self.model.eval()
