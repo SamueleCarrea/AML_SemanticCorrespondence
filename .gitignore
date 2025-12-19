@@ -40,6 +40,7 @@ ENV/
 # Data
 data/*
 !data/.gitkeep
+!data/README.md
 
 # Logs and outputs
 *.log
