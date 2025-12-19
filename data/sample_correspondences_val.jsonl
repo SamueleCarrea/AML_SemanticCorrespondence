@@ -1,0 +1,2 @@
+{"id": "val-001", "source_keypoints": [[0.15, 0.20], [0.65, 0.75]], "target_keypoints": [[0.16, 0.22], [0.66, 0.76]], "normalization_factor": 1.0}
+{"id": "val-002", "source_keypoints": [[0.30, 0.40], [0.35, 0.90]], "target_keypoints": [[0.29, 0.42], [0.33, 0.91]], "predicted_keypoints": [[0.28, 0.43], [0.36, 0.88]], "normalization_factor": 1.0}

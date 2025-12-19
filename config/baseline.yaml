@@ -1,0 +1,19 @@
+dataset:
+  splits:
+    train: data/sample_correspondences_train.jsonl
+    val: data/sample_correspondences_val.jsonl
+    test: data/sample_correspondences_test.jsonl
+  normalization_factor: 1.0
+
+model:
+  backbone: dinov2
+  feature_dim: 256
+  checkpoint:
+
+dataloader:
+  batch_size: 4
+
+evaluation:
+  pck_threshold: 0.05
+  output_dir: checkpoints
+  save_predictions: true
