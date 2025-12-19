@@ -1,0 +1,47 @@
+# Baseline configuration for SPair-71k semantic correspondence experiments
+# Provides default dataset locations, preprocessing, backbones, and evaluation settings.
+dataset:
+  name: SPair-71k
+  root: data/SPair-71k
+  splits:
+    train: data/sample_correspondences_train.jsonl
+    val: data/sample_correspondences_val.jsonl
+    test: data/sample_correspondences_test.jsonl
+  normalization_factor: 1.0
+  preprocessing:
+    resize: [640, 640]  # resize before cropping
+    crop: [560, 560]    # center crop target size
+
+model:
+  backbone: dinov2  # choices: dinov2, dinov3, sam
+  feature_dim: 256
+  checkpoint:
+
+  dinov2:
+    variant: vitb14
+    checkpoint: dinov2_vitb14
+    feature_layer: 11
+    stride: 14
+    patch_size: 14
+  dinov3:
+    variant: vitb14
+    checkpoint: vitb14
+    feature_layer: 11
+    stride: 14
+    patch_size: 14
+  sam:
+    encoder: vit_h
+    checkpoint: sam_vit_h_4b8939.pth
+    feature_layer: patch_tokens
+    stride: 16
+    patch_size: 16
+
+dataloader:
+  batch_size: 4
+
+evaluation:
+  pck_threshold: 0.05
+  output_dir: checkpoints
+  save_predictions: true
+  batch_size: 4  # per-GPU during evaluation
+  pck_thresholds: [0.05, 0.1, 0.15, 0.2, 0.3]
