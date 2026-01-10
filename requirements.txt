@@ -1,22 +1,57 @@
-# Core dependencies with compatible versions
+
+# Core PyTorch Stack
 torch>=2.6.0
 torchvision>=0.17.0
-numpy>=1.23.0
-pillow>=9.0.0
-opencv-python>=4.7.0
+torchaudio>=2.6.0
 
-# Feature extractors and models
-timm>=0.9.0
+# Vision Backbones & Models
+timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
+
+# DINOv2 (loaded via torch.hub, no pip install needed)
+# DINOv3 (not yet released publicly)
+# SAM (optional, uncomment if needed):
 # git+https://github.com/facebookresearch/dinov2.git  # Requires torch==2.0.0, uncomment if needed and install manually
 # git+https://github.com/facebookresearch/dinov3.git  # May have torch version conflicts
 # git+https://github.com/facebookresearch/segment-anything.git  # May have torch version conflicts
 
-# Utilities
-einops>=0.6.0
-tqdm>=4.64.0
-matplotlib>=3.5.0
 
-# Config management
+# Data Processing
+numpy>=1.23.0,<2.0.0
+pillow>=9.0.0,<11.0.0
+opencv-python>=4.7.0
+scikit-image>=0.20.0
+
+# Tensor Operations & Utilities
+einops>=0.7.0  # Elegant tensor reshaping
+tqdm>=4.65.0   # Progress bars
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0  # Interactive plots (optional)
+
+
+# Configuration Management
 omegaconf>=2.3.0
 hydra-core>=1.3.0
 pyyaml>=6.0
+
+# ============================================================================
+# Logging & Experiment Tracking
+# ============================================================================
+tensorboard>=2.13.0
+wandb>=0.15.0  # Optional: Weights & Biases integration
+
+# ============================================================================
+# Data Format Support
+# ============================================================================
+pandas>=2.0.0  # For result tables
+scipy>=1.10.0  # Scientific computing
+
+# ============================================================================
+# Development Tools (optional, for local dev)
+# ============================================================================
+pytest>=7.3.0
+black>=23.3.0
+ruff>=0.0.270
+ipykernel>=6.23.0  # Jupyter support
