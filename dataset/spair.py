@@ -31,7 +31,6 @@ import os
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
@@ -138,7 +137,8 @@ class SPairDataset(Dataset):
                 f"Expected structure: {self.root}/Layout/{size}/{split_file_map[split]}"
             )
 
-        # Parse TXT file: format is "category:src_img:trg_img" per line
+        # Parse TXT file: format is "pair_id-src_img-trg_img:category" per line
+        # Example: "000001-2008_002719-2008_004100:aeroplane"
         self.pairs = []
         with open(pairs_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -146,18 +146,31 @@ class SPairDataset(Dataset):
                 if not line:
                     continue
                 
+                # Split by ':' to separate pair_id and category
                 parts = line.split(":")
-                if len(parts) != 3:
+                if len(parts) != 2:
                     raise ValueError(
                         f"Invalid line format in {pairs_file}: {line}\n"
-                        f"Expected format: 'category:src_img:trg_img'"
+                        f"Expected format: 'pair_id-src_img-trg_img:category'"
                     )
                 
-                category, src_img, trg_img = parts
+                pair_info, category = parts
+                
+                # Parse pair_info: "000001-2008_002719-2008_004100"
+                # Split by '-' to get [pair_num, src_img, trg_img]
+                pair_parts = pair_info.split("-")
+                if len(pair_parts) != 3:
+                    raise ValueError(
+                        f"Invalid pair info format in {pairs_file}: {pair_info}\n"
+                        f"Expected format: 'pair_num-src_img-trg_img'"
+                    )
+                
+                _, src_img, trg_img = pair_parts
+                
                 self.pairs.append({
                     "category": category,
-                    "src_image": f"{category}/{src_img}",
-                    "trg_image": f"{category}/{trg_img}"
+                    "src_image": f"{category}/{src_img}.jpg",
+                    "trg_image": f"{category}/{trg_img}.jpg"
                 })
         
         if len(self.pairs) == 0:
