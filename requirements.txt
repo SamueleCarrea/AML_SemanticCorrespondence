@@ -1,6 +1,6 @@
 # Core PyTorch Stack (Colab già ha torch preinstallato)
 # torch>=2.0.0  # Commentato - usa versione Colab
-# torchvision>=0.15.0
+# torchvision>=0.15.0 # Commented out to rely on Colab's pre-installed version
 # torchaudio>=2.0.0
 
 # Vision Backbones & Models
@@ -15,8 +15,7 @@ timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
 
 
 # Data Processing
-numpy>=1.23.0,<2.0.0  # IMPORTANTE: Colab richiede numpy 1.x per TensorFlow/Numba
-pillow>=9.0.0,<11.0.0
+# numpy>=1.23.0,<2.0.0  # IMPORTANTE: Commentato per evitare conflitti con Colab/TensorFlow/Numba
 pillow>=9.0.0,<11.0.0
 opencv-python>=4.8.0
 scikit-image>=0.20.0
