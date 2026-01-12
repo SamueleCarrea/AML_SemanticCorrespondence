@@ -1,10 +1,26 @@
+"""SPair-71k Dataset Loader.
+
+This module provides a PyTorch Dataset implementation for the SPair-71k benchmark
+for semantic correspondence evaluation.
+
+The dataset expects the following structure:
+    root/
+        ImageAnnotation/
+            train/pairs.json
+            val/pairs.json
+            test/pairs.json
+        JPEGImages/
+            <category>/*.jpg
+        keypoints/
+            <category>.json (optional)
+"""
+
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 from PIL import Image
@@ -12,39 +28,60 @@ from torch.utils.data import Dataset
 import torchvision.transforms.functional as F
 
 
+# ImageNet normalization constants
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
-@dataclass
-class PairAnnotation:
-    """Container for the metadata of a single pair."""
-
-    pair_id: str
-    category: str
-    annotation_path: Path
-
-
 class SPairDataset(Dataset):
-    """PyTorch dataset for the SPair-71k benchmark.
+    """PyTorch dataset for SPair-71k semantic correspondence benchmark.
 
-    The dataset expects the following structure under ``root``::
+    SPair-71k contains 70,958 image pairs across 18 object categories with
+    manually annotated keypoint correspondences.
 
+    Args:
+        root: Path to SPair-71k dataset root directory
+        split: Dataset split - 'train', 'val', or 'test'
+        long_side: Resize images so max(H, W) = long_side
+        normalize: Apply ImageNet normalization
+
+    Expected directory structure:
         root/
+            ImageAnnotation/
+                train/pairs.json  (7,200 pairs)
+                val/pairs.json    (1,800 pairs)
+                test/pairs.json   (1,814 pairs)
             JPEGImages/
-            PairAnnotation/<class_name>/*.json
-            ImageSets/main/{train,val,test}.txt
-            symmetry.txt (optional)
+                aeroplane/*.jpg
+                bicycle/*.jpg
+                ...
 
-    Each entry in the split file corresponds to a JSON annotation containing
-    the image names, bounding boxes and keypoints for a source-target pair.
+    Returns:
+        Dictionary with keys:
+            - src_img: (3, H, W) source image tensor
+            - tgt_img: (3, H, W) target image tensor
+            - src_kps: (N, 2) source keypoints in (x, y) format
+            - tgt_kps: (N, 2) target keypoints in (x, y) format
+            - valid_mask: (N,) boolean mask for valid keypoints
+            - category: str, object category name
+            - pair_id: str, unique pair identifier
+            - src_scale: float, resize scale factor for source
+            - tgt_scale: float, resize scale factor for target
+            - src_orig_size: (2,) original source image (H, W)
+            - tgt_orig_size: (2,) original target image (H, W)
+
+    Example:
+        >>> dataset = SPairDataset(root='data/SPair-71k', split='test')
+        >>> sample = dataset[0]
+        >>> src_img = sample['src_img']  # (3, H, W)
+        >>> src_kps = sample['src_kps']  # (N, 2)
     """
 
     def __init__(
         self,
         root: str | os.PathLike,
-        split: str = "train",
-        long_side: int = 480,
+        split: str = "test",
+        long_side: int = 518,
         normalize: bool = True,
     ) -> None:
         super().__init__()
@@ -53,106 +90,190 @@ class SPairDataset(Dataset):
         self.long_side = long_side
         self.normalize = normalize
 
-        split_file = self.root / "ImageSets" / "main" / f"{split}.txt"
-        if not split_file.exists():
-            raise FileNotFoundError(f"Split file not found: {split_file}")
+        # Load annotation file
+        ann_file = self.root / "ImageAnnotation" / split / "pairs.json"
+        if not ann_file.exists():
+            raise FileNotFoundError(
+                f"Annotation file not found: {ann_file}\n"
+                f"Expected structure: {self.root}/ImageAnnotation/{split}/pairs.json"
+            )
 
-        self.pairs: List[PairAnnotation] = []
-        with open(split_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                category = line.split("_")[0]
-                ann_path = self.root / "PairAnnotation" / category / f"{line}.json"
-                if not ann_path.exists():
-                    raise FileNotFoundError(f"Annotation not found: {ann_path}")
-                self.pairs.append(PairAnnotation(pair_id=line, category=category, annotation_path=ann_path))
+        with open(ann_file, "r", encoding="utf-8") as f:
+            self.pairs = json.load(f)
+
+        if len(self.pairs) == 0:
+            raise ValueError(f"No pairs found in {ann_file}")
+
+        print(f"✅ Loaded {len(self.pairs)} pairs from {split} split")
 
     def __len__(self) -> int:
         return len(self.pairs)
 
-    def __getitem__(self, index: int) -> Dict[str, torch.Tensor | str]:
-        entry = self.pairs[index]
-        with open(entry.annotation_path, "r", encoding="utf-8") as f:
-            ann = json.load(f)
+    def __getitem__(self, index: int) -> Dict[str, torch.Tensor | str | Tuple[int, int]]:
+        """Load a single source-target image pair with keypoint annotations."""
+        pair = self.pairs[index]
 
-        src_im = self._load_image(ann.get("src_imname"))
-        tgt_im = self._load_image(ann.get("trg_imname"))
+        # Load images
+        src_img = self._load_image(pair["src_img"])
+        tgt_img = self._load_image(pair["tgt_img"])
 
-        src_tensor, src_scale, src_size = self._resize_and_normalize(src_im)
-        tgt_tensor, tgt_scale, tgt_size = self._resize_and_normalize(tgt_im)
+        # Resize and normalize
+        src_tensor, src_scale, src_orig_size = self._resize_and_normalize(src_img)
+        tgt_tensor, tgt_scale, tgt_orig_size = self._resize_and_normalize(tgt_img)
 
-        src_kps, src_vis = self._load_keypoints(ann.get("src_kps", []), src_scale)
-        tgt_kps, tgt_vis = self._load_keypoints(ann.get("trg_kps", []), tgt_scale)
+        # Load keypoints and scale them
+        src_kps = torch.tensor(pair["src_kps"], dtype=torch.float32) * src_scale
+        tgt_kps = torch.tensor(pair["tgt_kps"], dtype=torch.float32) * tgt_scale
 
-        # Ensure the same number of keypoints between source and target
-        num_kps = min(src_kps.shape[0], tgt_kps.shape[0])
+        # Load visibility mask
+        valid_mask = torch.tensor(pair["valid"], dtype=torch.bool)
+
+        # Ensure consistent number of keypoints
+        num_kps = min(len(src_kps), len(tgt_kps), len(valid_mask))
         src_kps = src_kps[:num_kps]
         tgt_kps = tgt_kps[:num_kps]
-        src_vis = src_vis[:num_kps]
-        tgt_vis = tgt_vis[:num_kps]
-        valid_mask = src_vis & tgt_vis
+        valid_mask = valid_mask[:num_kps]
 
-        sample: Dict[str, torch.Tensor | str | Tuple[int, int]] = {
+        sample = {
             "src_img": src_tensor,
             "tgt_img": tgt_tensor,
             "src_kps": src_kps,
             "tgt_kps": tgt_kps,
             "valid_mask": valid_mask,
-            "category": entry.category,
-            "pair_id": entry.pair_id,
+            "category": pair["category"],
+            "pair_id": pair["pair_id"],
             "src_scale": torch.tensor(src_scale, dtype=torch.float32),
             "tgt_scale": torch.tensor(tgt_scale, dtype=torch.float32),
-            "src_orig_size": torch.tensor(src_size, dtype=torch.int64),
-            "tgt_orig_size": torch.tensor(tgt_size, dtype=torch.int64),
+            "src_orig_size": torch.tensor(src_orig_size, dtype=torch.int64),
+            "tgt_orig_size": torch.tensor(tgt_orig_size, dtype=torch.int64),
         }
 
-        if "src_bbox" in ann:
-            sample["src_bbox"] = torch.tensor(ann["src_bbox"], dtype=torch.float32) * src_scale
-        if "trg_bbox" in ann:
-            sample["tgt_bbox"] = torch.tensor(ann["trg_bbox"], dtype=torch.float32) * tgt_scale
+        # Add bounding boxes if available
+        if "src_bbox" in pair:
+            sample["src_bbox"] = torch.tensor(pair["src_bbox"], dtype=torch.float32) * src_scale
+        if "tgt_bbox" in pair:
+            sample["tgt_bbox"] = torch.tensor(pair["tgt_bbox"], dtype=torch.float32) * tgt_scale
 
         return sample
 
-    def _load_image(self, image_name: Optional[str]) -> Image.Image:
-        if image_name is None:
-            raise ValueError("Annotation missing image name")
-
+    def _load_image(self, image_name: str) -> Image.Image:
+        """Load an image from JPEGImages directory."""
         img_path = self.root / "JPEGImages" / image_name
+
         if not img_path.exists():
-            # Try adding a default jpg extension when missing
-            if img_path.suffix == "":
-                candidate = img_path.with_suffix(".jpg")
-                if candidate.exists():
-                    img_path = candidate
-            # Fallback: try png
-            if not img_path.exists():
-                candidate = img_path.with_suffix(".png")
-                if candidate.exists():
-                    img_path = candidate
-        if not img_path.exists():
-            raise FileNotFoundError(f"Image not found: {img_path}")
+            raise FileNotFoundError(
+                f"Image not found: {img_path}\n"
+                f"Expected location: {self.root}/JPEGImages/{image_name}"
+            )
+
         return Image.open(img_path).convert("RGB")
 
-    def _resize_and_normalize(self, image: Image.Image) -> Tuple[torch.Tensor, float, Tuple[int, int]]:
+    def _resize_and_normalize(
+        self, image: Image.Image
+    ) -> Tuple[torch.Tensor, float, Tuple[int, int]]:
+        """Resize image maintaining aspect ratio and optionally normalize."""
         orig_w, orig_h = image.size
+
+        # Calculate scale to resize long side to target size
         scale = float(self.long_side) / float(max(orig_w, orig_h))
         new_w = int(round(orig_w * scale))
         new_h = int(round(orig_h * scale))
 
+        # Resize
         resized = F.resize(image, size=[new_h, new_w])
+
+        # Convert to tensor
         tensor = F.to_tensor(resized)
+
+        # Normalize with ImageNet statistics
         if self.normalize:
             tensor = F.normalize(tensor, IMAGENET_MEAN, IMAGENET_STD)
+
         return tensor, scale, (orig_h, orig_w)
 
-    def _load_keypoints(
-        self, kps: List[List[float]], scale: float
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if len(kps) == 0:
-            return torch.zeros((0, 2), dtype=torch.float32), torch.zeros(0, dtype=torch.bool)
 
-        coords = torch.tensor([[kp[0], kp[1]] for kp in kps], dtype=torch.float32) * scale
-        visibility = torch.tensor([kp[2] if len(kp) > 2 else 1 for kp in kps], dtype=torch.bool)
-        return coords, visibility
+def compute_pck(
+    pred_kps: torch.Tensor,
+    gt_kps: torch.Tensor,
+    image_size: Tuple[int, int],
+    thresholds: List[float] = [0.05, 0.10, 0.15, 0.20],
+) -> Dict[str, float]:
+    """Compute Percentage of Correct Keypoints (PCK) metric.
+
+    A predicted keypoint is correct if:
+        ||pred_kp - gt_kp||_2 <= threshold * max(H, W)
+
+    Args:
+        pred_kps: (N, 2) predicted keypoints in (x, y) format
+        gt_kps: (N, 2) ground truth keypoints in (x, y) format
+        image_size: (H, W) image dimensions
+        thresholds: List of normalized distance thresholds (e.g., 0.10 = 10%)
+
+    Returns:
+        Dictionary mapping 'PCK@{threshold}' to accuracy value
+
+    Example:
+        >>> pred = torch.tensor([[100.0, 150.0], [200.0, 250.0]])
+        >>> gt = torch.tensor([[105.0, 155.0], [195.0, 245.0]])
+        >>> pck = compute_pck(pred, gt, (480, 640))
+        >>> print(f"PCK@0.10: {pck['PCK@0.10']:.4f}")
+    """
+    H, W = image_size
+    max_dim = max(H, W)
+
+    # Compute Euclidean distances
+    distances = torch.norm(pred_kps - gt_kps, dim=1)  # (N,)
+
+    # Normalize by max image dimension
+    normalized_distances = distances / max_dim
+
+    # Compute PCK for each threshold
+    results = {}
+    for threshold in thresholds:
+        correct = (normalized_distances <= threshold).float()
+        pck = correct.mean().item()
+        results[f"PCK@{threshold:.2f}"] = pck
+
+    return results
+
+
+def compute_pck_per_category(
+    pred_kps_list: List[torch.Tensor],
+    gt_kps_list: List[torch.Tensor],
+    image_sizes: List[Tuple[int, int]],
+    categories: List[str],
+    thresholds: List[float] = [0.05, 0.10, 0.15, 0.20],
+) -> Dict[str, Dict[str, float]]:
+    """Compute PCK metrics grouped by object category.
+
+    Args:
+        pred_kps_list: List of (N, 2) predicted keypoints tensors
+        gt_kps_list: List of (N, 2) ground truth keypoints tensors
+        image_sizes: List of (H, W) tuples
+        categories: List of category names
+        thresholds: List of PCK thresholds
+
+    Returns:
+        Dictionary mapping category -> {PCK@T metrics}
+
+    Example:
+        >>> results = compute_pck_per_category(preds, gts, sizes, cats)
+        >>> print(results['cat']['PCK@0.10'])
+    """
+    from collections import defaultdict
+
+    category_results = defaultdict(lambda: defaultdict(list))
+
+    for pred, gt, size, cat in zip(pred_kps_list, gt_kps_list, image_sizes, categories):
+        pck = compute_pck(pred, gt, size, thresholds)
+        for metric, value in pck.items():
+            category_results[cat][metric].append(value)
+
+    # Average per category
+    final_results = {}
+    for cat, metrics in category_results.items():
+        final_results[cat] = {
+            metric: sum(values) / len(values) for metric, values in metrics.items()
+        }
+
+    return final_results
