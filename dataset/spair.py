@@ -146,6 +146,10 @@ class SPairDataset(Dataset):
                 if not line:
                     continue
                 
+                # Store the full filename for later use
+                # Format: "pair_id-src_img-trg_img:category"
+                full_pair_name = line  # e.g., "009662-2007_004081-2008_000196:pottedplant"
+                
                 # Split by ':' to separate pair_id and category
                 parts = line.split(":")
                 if len(parts) != 2:
@@ -165,12 +169,13 @@ class SPairDataset(Dataset):
                         f"Expected format: 'pair_num-src_img-trg_img'"
                     )
                 
-                _, src_img, trg_img = pair_parts
+                pair_id, src_img, trg_img = pair_parts
                 
                 self.pairs.append({
                     "category": category,
                     "src_image": f"{category}/{src_img}.jpg",
-                    "trg_image": f"{category}/{trg_img}.jpg"
+                    "trg_image": f"{category}/{trg_img}.jpg",
+                    "pair_filename": full_pair_name  # Store full filename for JSON lookup
                 })
         
         if len(self.pairs) == 0:
@@ -181,90 +186,16 @@ class SPairDataset(Dataset):
     def __len__(self) -> int:
         return len(self.pairs)
 
-    def __getitem__(self, index: int) -> Dict[str, torch.Tensor | str | Tuple[int, int]]:
-        """Load a single source-target image pair with keypoint annotations."""
-        pair_info = self.pairs[index]
-        
-        src_img_path = pair_info['src_image']  # e.g., "aeroplane/2008_000033.jpg"
-        tgt_img_path = pair_info['trg_image']  # e.g., "aeroplane/2008_000042.jpg"
-        category = pair_info['category']
-        
-        # Load pair annotation
-        pair_data = self._load_pair_annotation(src_img_path, tgt_img_path, category)
-
-        # Load images
-        src_img = self._load_image(src_img_path)
-        tgt_img = self._load_image(tgt_img_path)
-
-        # Resize and normalize
-        src_tensor, src_scale, src_orig_size = self._resize_and_normalize(src_img)
-        tgt_tensor, tgt_scale, tgt_orig_size = self._resize_and_normalize(tgt_img)
-
-        # Load keypoints and scale them
-        src_kps = torch.tensor(pair_data["src_kps"], dtype=torch.float32)
-        tgt_kps = torch.tensor(pair_data["trg_kps"], dtype=torch.float32)
-        
-        # Scale keypoints
-        src_kps = src_kps * src_scale
-        tgt_kps = tgt_kps * tgt_scale
-
-        # All keypoints are valid by default (SPair-71k only includes valid correspondences)
-        num_kps = len(src_kps)
-        valid_mask = torch.ones(num_kps, dtype=torch.bool)
-
-        # Generate pair ID
-        src_name = Path(src_img_path).stem
-        tgt_name = Path(tgt_img_path).stem
-        pair_id = f"{category}:{src_name}-{tgt_name}"
-
-        sample = {
-            "src_img": src_tensor,
-            "tgt_img": tgt_tensor,
-            "src_kps": src_kps,
-            "tgt_kps": tgt_kps,
-            "valid_mask": valid_mask,
-            "category": category,
-            "pair_id": pair_id,
-            "src_scale": torch.tensor(src_scale, dtype=torch.float32),
-            "tgt_scale": torch.tensor(tgt_scale, dtype=torch.float32),
-            "src_orig_size": torch.tensor(src_orig_size, dtype=torch.int64),
-            "tgt_orig_size": torch.tensor(tgt_orig_size, dtype=torch.int64),
-        }
-
-        # Add bounding boxes (scaled)
-        if "src_bndbox" in pair_data:
-            bbox = pair_data["src_bndbox"]
-            sample["src_bbox"] = torch.tensor(
-                [bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"]], 
-                dtype=torch.float32
-            ) * src_scale
-            
-        if "trg_bndbox" in pair_data:
-            bbox = pair_data["trg_bndbox"]
-            sample["tgt_bbox"] = torch.tensor(
-                [bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"]], 
-                dtype=torch.float32
-            ) * tgt_scale
-
-        # Load segmentation masks if requested
-        if self.load_segmentation:
-            src_seg = self._load_segmentation(src_img_path, src_orig_size, (src_tensor.shape[1], src_tensor.shape[2]))
-            tgt_seg = self._load_segmentation(tgt_img_path, tgt_orig_size, (tgt_tensor.shape[1], tgt_tensor.shape[2]))
-            sample["src_seg"] = src_seg
-            sample["tgt_seg"] = tgt_seg
-
-        return sample
-
     def _load_pair_annotation(
         self, src_img_path: str, tgt_img_path: str, category: str
     ) -> Dict:
         """Load pair annotation JSON file."""
-        # Extract image names
-        src_name = Path(src_img_path).stem  # e.g., "2008_000033"
-        tgt_name = Path(tgt_img_path).stem  # e.g., "2008_000042"
+        # Get the full pair filename from the stored pair info
+        pair_info = self.pairs[self._current_index]  # Store index in __getitem__
+        pair_filename = pair_info["pair_filename"]
         
-        # Construct annotation filename: src_name-tgt_name.json
-        ann_filename = f"{src_name}-{tgt_name}.json"
+        # Construct annotation filename using the full pair name
+        ann_filename = f"{pair_filename}.json"
         ann_path = self.root / "PairAnnotation" / category / ann_filename
         
         if not ann_path.exists():
@@ -327,6 +258,83 @@ class SPairDataset(Dataset):
             tensor = F.normalize(tensor, IMAGENET_MEAN, IMAGENET_STD)
 
         return tensor, scale, (orig_h, orig_w)
+
+    def __getitem__(self, index: int) -> Dict[str, torch.Tensor | str | Tuple[int, int]]:
+        """Load a single source-target image pair with keypoint annotations."""
+        # Store index for use in _load_pair_annotation
+        self._current_index = index
+        
+        pair_info = self.pairs[index]
+        
+        src_img_path = pair_info['src_image']  # e.g., "aeroplane/2008_000033.jpg"
+        tgt_img_path = pair_info['trg_image']  # e.g., "aeroplane/2008_000042.jpg"
+        category = pair_info['category']
+        
+        # Load pair annotation
+        pair_data = self._load_pair_annotation(src_img_path, tgt_img_path, category)
+
+        # Load images
+        src_img = self._load_image(src_img_path)
+        tgt_img = self._load_image(tgt_img_path)
+
+        # Resize and normalize
+        src_tensor, src_scale, src_orig_size = self._resize_and_normalize(src_img)
+        tgt_tensor, tgt_scale, tgt_orig_size = self._resize_and_normalize(tgt_img)
+
+        # Load keypoints and scale them
+        src_kps = torch.tensor(pair_data["src_kps"], dtype=torch.float32)
+        tgt_kps = torch.tensor(pair_data["trg_kps"], dtype=torch.float32)
+        
+        # Scale keypoints
+        src_kps = src_kps * src_scale
+        tgt_kps = tgt_kps * tgt_scale
+
+        # All keypoints are valid by default (SPair-71k only includes valid correspondences)
+        num_kps = len(src_kps)
+        valid_mask = torch.ones(num_kps, dtype=torch.bool)
+
+        # Generate pair ID
+        src_name = Path(src_img_path).stem
+        tgt_name = Path(tgt_img_path).stem
+        pair_id = f"{category}:{src_name}-{tgt_name}"
+
+        sample = {
+            "src_img": src_tensor,
+            "tgt_img": tgt_tensor,
+            "src_kps": src_kps,
+            "tgt_kps": tgt_kps,
+            "valid_mask": valid_mask,
+            "category": category,
+            "pair_id": pair_id,
+            "src_scale": torch.tensor(src_scale, dtype=torch.float32),
+            "tgt_scale": torch.tensor(tgt_scale, dtype=torch.float32),
+            "src_orig_size": torch.tensor(src_orig_size, dtype=torch.int64),
+            "tgt_orig_size": torch.tensor(tgt_orig_size, dtype=torch.int64),
+        }
+
+        # Add bounding boxes (scaled)
+        if "src_bndbox" in pair_data:
+            bbox = pair_data["src_bndbox"]
+            sample["src_bbox"] = torch.tensor(
+                [bbox[0], bbox[1], bbox[2], bbox[3]],  # [xmin, ymin, xmax, ymax]
+                dtype=torch.float32
+            ) * src_scale
+            
+        if "trg_bndbox" in pair_data:
+            bbox = pair_data["trg_bndbox"]
+            sample["tgt_bbox"] = torch.tensor(
+                [bbox[0], bbox[1], bbox[2], bbox[3]],  # [xmin, ymin, xmax, ymax]
+                dtype=torch.float32
+            ) * tgt_scale
+
+        # Load segmentation masks if requested
+        if self.load_segmentation:
+            src_seg = self._load_segmentation(src_img_path, src_orig_size, (src_tensor.shape[1], src_tensor.shape[2]))
+            tgt_seg = self._load_segmentation(tgt_img_path, tgt_orig_size, (tgt_tensor.shape[1], tgt_tensor.shape[2]))
+            sample["src_seg"] = src_seg
+            sample["tgt_seg"] = tgt_seg
+
+        return sample
 
 
 def compute_pck(
