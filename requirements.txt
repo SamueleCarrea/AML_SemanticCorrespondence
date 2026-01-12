@@ -1,7 +1,7 @@
-# Core PyTorch Stack
-torch>=2.6.0
-torchvision>=0.17.0
-torchaudio>=2.6.0
+# Core PyTorch Stack (Colab già ha torch preinstallato)
+# torch>=2.0.0  # Commentato - usa versione Colab
+# torchvision>=0.15.0
+# torchaudio>=2.0.0
 
 # Vision Backbones & Models
 timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
@@ -17,7 +17,7 @@ timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
 # Data Processing
 numpy>=2.0.0,<2.3.0  # Updated to satisfy opencv, jax, shap, pytensor
 pillow>=9.0.0,<11.0.0
-opencv-python>=4.12.0
+opencv-python>=4.8.0
 scikit-image>=0.20.0
 
 # Tensor Operations & Utilities
@@ -39,12 +39,12 @@ tensorboard>=2.13.0
 wandb>=0.15.0
 
 # Data Format Support
-pandas>=2.0.0
+pandas>=1.5.0
 scipy>=1.10.0
 
-# Development Tools (Colab-compatible versions)
+# Development Tools - VERSIONI COLAB
 pytest>=7.3.0
 black>=23.3.0
 ruff>=0.0.270
-ipykernel==6.17.1  # Match Google Colab requirement
-jupyter-client>=5.3.4,<8.0  # Match notebook/kernel-gateway requirements
+# ipykernel - già installato in Colab
+# jupyter-client - già installato in Colab
