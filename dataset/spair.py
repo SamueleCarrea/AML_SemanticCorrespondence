@@ -6,7 +6,9 @@ for semantic correspondence evaluation.
 The dataset expects the following structure:
     root/
         PairAnnotation/
-            <category>/*.json
+            test/*.json
+            val/*.json
+            trn/*.json
         ImageAnnotation/
             <category>/*.json
         JPEGImages/
@@ -68,7 +70,9 @@ class SPairDataset(Dataset):
                     val.txt      (1,070 pairs)
                     test.txt     (2,438 pairs)
             PairAnnotation/
-                <category>/*.json
+                test/*.json      (annotations organized by split)
+                val/*.json
+                trn/*.json
             JPEGImages/
                 <category>/*.jpg
             Segmentation/
@@ -128,6 +132,12 @@ class SPairDataset(Dataset):
             "val": "val.txt",
             "test": "test.txt"
         }
+        
+        split_dir_map = {
+            "train": "trn",
+            "val": "val",
+            "test": "test"
+        }
 
         # Load pairs from TXT file
         pairs_file = self.root / "Layout" / size / split_file_map[split]
@@ -138,7 +148,7 @@ class SPairDataset(Dataset):
             )
 
         # Parse TXT file: format is "pair_id-src_img-trg_img:category" per line
-        # Example: "000001-2008_002719-2008_004100:aeroplane"
+        # Example: "009662-2007_004081-2008_000196:pottedplant"
         self.pairs = []
         with open(pairs_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -146,11 +156,10 @@ class SPairDataset(Dataset):
                 if not line:
                     continue
                 
-                # Store the full filename for later use
-                # Format: "pair_id-src_img-trg_img:category"
+                # Store the full filename for JSON lookup
                 full_pair_name = line  # e.g., "009662-2007_004081-2008_000196:pottedplant"
                 
-                # Split by ':' to separate pair_id and category
+                # Split by ':' to separate pair info and category
                 parts = line.split(":")
                 if len(parts) != 2:
                     raise ValueError(
@@ -160,13 +169,13 @@ class SPairDataset(Dataset):
                 
                 pair_info, category = parts
                 
-                # Parse pair_info: "000001-2008_002719-2008_004100"
-                # Split by '-' to get [pair_num, src_img, trg_img]
+                # Parse pair_info: "009662-2007_004081-2008_000196"
+                # Split by '-' to get [pair_id, src_img, trg_img]
                 pair_parts = pair_info.split("-")
                 if len(pair_parts) != 3:
                     raise ValueError(
                         f"Invalid pair info format in {pairs_file}: {pair_info}\n"
-                        f"Expected format: 'pair_num-src_img-trg_img'"
+                        f"Expected format: 'pair_id-src_img-trg_img'"
                     )
                 
                 pair_id, src_img, trg_img = pair_parts
@@ -175,7 +184,8 @@ class SPairDataset(Dataset):
                     "category": category,
                     "src_image": f"{category}/{src_img}.jpg",
                     "trg_image": f"{category}/{trg_img}.jpg",
-                    "pair_filename": full_pair_name  # Store full filename for JSON lookup
+                    "pair_filename": f"{full_pair_name}.json",  # Filename with .json extension
+                    "split_dir": split_dir_map[split]  # Directory name for annotations
                 })
         
         if len(self.pairs) == 0:
@@ -186,24 +196,27 @@ class SPairDataset(Dataset):
     def __len__(self) -> int:
         return len(self.pairs)
 
-    def _load_pair_annotation(
-        self, src_img_path: str, tgt_img_path: str, category: str
-    ) -> Dict:
+    def _load_pair_annotation(self, pair_info: Dict) -> Dict:
         """Load pair annotation JSON file."""
-        # Get the full pair filename from the stored pair info
-        pair_info = self.pairs[self._current_index]  # Store index in __getitem__
+        category = pair_info["category"]
         pair_filename = pair_info["pair_filename"]
+        split_dir = pair_info["split_dir"]
         
-        # Construct annotation filename using the full pair name
-        ann_filename = f"{pair_filename}.json"
-        ann_path = self.root / "PairAnnotation" / category / ann_filename
+        # Try category subdirectory first (standard structure)
+        ann_path = self.root / "PairAnnotation" / split_dir / category / pair_filename
         
+        # If not found, try flat structure
+        if not ann_path.exists():
+            ann_path = self.root / "PairAnnotation" / split_dir / pair_filename
+    
         if not ann_path.exists():
             raise FileNotFoundError(
-                f"Pair annotation not found: {ann_path}\n"
-                f"Expected: {self.root}/PairAnnotation/{category}/{ann_filename}"
+                f"Pair annotation not found.\n"
+                f"Tried:\n"
+                f"  1. {self.root / 'PairAnnotation' / split_dir / category / pair_filename}\n"
+                f"  2. {self.root / 'PairAnnotation' / split_dir / pair_filename}"
             )
-        
+    
         with open(ann_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
@@ -261,9 +274,6 @@ class SPairDataset(Dataset):
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor | str | Tuple[int, int]]:
         """Load a single source-target image pair with keypoint annotations."""
-        # Store index for use in _load_pair_annotation
-        self._current_index = index
-        
         pair_info = self.pairs[index]
         
         src_img_path = pair_info['src_image']  # e.g., "aeroplane/2008_000033.jpg"
@@ -271,7 +281,7 @@ class SPairDataset(Dataset):
         category = pair_info['category']
         
         # Load pair annotation
-        pair_data = self._load_pair_annotation(src_img_path, tgt_img_path, category)
+        pair_data = self._load_pair_annotation(pair_info)
 
         # Load images
         src_img = self._load_image(src_img_path)
@@ -312,20 +322,14 @@ class SPairDataset(Dataset):
             "tgt_orig_size": torch.tensor(tgt_orig_size, dtype=torch.int64),
         }
 
-        # Add bounding boxes (scaled)
+        # Add bounding boxes (scaled) - format: [xmin, ymin, xmax, ymax]
         if "src_bndbox" in pair_data:
             bbox = pair_data["src_bndbox"]
-            sample["src_bbox"] = torch.tensor(
-                [bbox[0], bbox[1], bbox[2], bbox[3]],  # [xmin, ymin, xmax, ymax]
-                dtype=torch.float32
-            ) * src_scale
+            sample["src_bbox"] = torch.tensor(bbox, dtype=torch.float32) * src_scale
             
         if "trg_bndbox" in pair_data:
             bbox = pair_data["trg_bndbox"]
-            sample["tgt_bbox"] = torch.tensor(
-                [bbox[0], bbox[1], bbox[2], bbox[3]],  # [xmin, ymin, xmax, ymax]
-                dtype=torch.float32
-            ) * tgt_scale
+            sample["tgt_bbox"] = torch.tensor(bbox, dtype=torch.float32) * tgt_scale
 
         # Load segmentation masks if requested
         if self.load_segmentation:

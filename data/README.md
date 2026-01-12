@@ -19,11 +19,11 @@ data/
     │   ├── bird/
     │   └── ... (18 categories total)
     │
-    ├── PairAnnotation/          # Json annotation files for all 70,958 image pairs
-    │   ├── aeroplane/           # (53,340 train, 5,384 val, 12,234 test)
-    │   ├── bicycle/
-    │   ├── bird/
-    │   └── ... (18 categories total)
+    ├── PairAnnotation/          
+    │   ├── test/           
+    │   ├── val/
+    │   └── trn/
+    │   
     │
     ├── JPEGImages/              # 1,800 images organized by category
     │   ├── aeroplane/           # 100 images per category
