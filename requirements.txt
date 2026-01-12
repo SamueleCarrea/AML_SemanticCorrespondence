@@ -1,4 +1,3 @@
-
 # Core PyTorch Stack
 torch>=2.6.0
 torchvision>=0.17.0
@@ -16,38 +15,36 @@ timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
 
 
 # Data Processing
-numpy>=1.23.0,<2.0.0
+numpy>=2.0.0,<2.3.0  # Updated to satisfy opencv, jax, shap, pytensor
 pillow>=9.0.0,<11.0.0
-opencv-python>=4.7.0
+opencv-python>=4.12.0
 scikit-image>=0.20.0
 
 # Tensor Operations & Utilities
-einops>=0.7.0  # Elegant tensor reshaping
-tqdm>=4.65.0   # Progress bars
+einops>=0.7.0
+tqdm>=4.65.0
 
 # Visualization
 matplotlib>=3.7.0
 seaborn>=0.12.0
-plotly>=5.14.0  # Interactive plots (optional)
-
+plotly>=5.14.0
 
 # Configuration Management
 omegaconf>=2.3.0
 hydra-core>=1.3.0
 pyyaml>=6.0
 
-
 # Logging & Experiment Tracking
 tensorboard>=2.13.0
-wandb>=0.15.0  # Optional: Weights & Biases integration
-
+wandb>=0.15.0
 
 # Data Format Support
-pandas>=2.0.0  # For result tables
-scipy>=1.10.0  # Scientific computing
+pandas>=2.0.0
+scipy>=1.10.0
 
-# Development Tools (optional, for local dev)
+# Development Tools (Colab-compatible versions)
 pytest>=7.3.0
 black>=23.3.0
 ruff>=0.0.270
-ipykernel>=6.23.0  # Jupyter support
+ipykernel==6.17.1  # Match Google Colab requirement
+jupyter-client>=5.3.4,<8.0  # Match notebook/kernel-gateway requirements
