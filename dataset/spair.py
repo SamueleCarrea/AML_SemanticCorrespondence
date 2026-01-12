@@ -13,13 +13,13 @@ The dataset expects the following structure:
             <category>/*.jpg
         Layout/
             large/
-                train_pairs.csv
-                val_pairs.csv
-                test_pairs.csv
+                trn.txt
+                val.txt
+                test.txt
             small/
-                train_pairs.csv
-                val_pairs.csv
-                test_pairs.csv
+                trn.txt
+                val.txt
+                test.txt
         Segmentation/
             <category>/*.png
 """
@@ -61,13 +61,13 @@ class SPairDataset(Dataset):
         root/
             Layout/
                 large/
-                    train_pairs.csv  (53,340 pairs)
-                    val_pairs.csv    (5,384 pairs)
-                    test_pairs.csv   (12,234 pairs)
+                    trn.txt      (53,340 pairs)
+                    val.txt      (5,384 pairs)
+                    test.txt     (12,234 pairs)
                 small/
-                    train_pairs.csv  (10,652 pairs)
-                    val_pairs.csv    (1,070 pairs)
-                    test_pairs.csv   (2,438 pairs)
+                    trn.txt      (10,652 pairs)
+                    val.txt      (1,070 pairs)
+                    test.txt     (2,438 pairs)
             PairAnnotation/
                 <category>/*.json
             JPEGImages/
@@ -123,31 +123,58 @@ class SPairDataset(Dataset):
         if size not in ["large", "small"]:
             raise ValueError(f"Invalid size: {size}. Must be 'large' or 'small'")
 
-        # Load pairs from CSV file
-        pairs_file = self.root / "Layout" / size / f"{split}_pairs.csv"
+        # Map split names to file names
+        split_file_map = {
+            "train": "trn.txt",
+            "val": "val.txt",
+            "test": "test.txt"
+        }
+
+        # Load pairs from TXT file
+        pairs_file = self.root / "Layout" / size / split_file_map[split]
         if not pairs_file.exists():
             raise FileNotFoundError(
                 f"Pairs file not found: {pairs_file}\n"
-                f"Expected structure: {self.root}/Layout/{size}/{split}_pairs.csv"
+                f"Expected structure: {self.root}/Layout/{size}/{split_file_map[split]}"
             )
 
-        self.pairs_df = pd.read_csv(pairs_file)
+        # Parse TXT file: format is "category:src_img:trg_img" per line
+        self.pairs = []
+        with open(pairs_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                parts = line.split(":")
+                if len(parts) != 3:
+                    raise ValueError(
+                        f"Invalid line format in {pairs_file}: {line}\n"
+                        f"Expected format: 'category:src_img:trg_img'"
+                    )
+                
+                category, src_img, trg_img = parts
+                self.pairs.append({
+                    "category": category,
+                    "src_image": f"{category}/{src_img}",
+                    "trg_image": f"{category}/{trg_img}"
+                })
         
-        if len(self.pairs_df) == 0:
+        if len(self.pairs) == 0:
             raise ValueError(f"No pairs found in {pairs_file}")
 
-        print(f"✅ Loaded {len(self.pairs_df)} pairs from {split} split ({size})")
+        print(f"✅ Loaded {len(self.pairs)} pairs from {split} split ({size})")
 
     def __len__(self) -> int:
-        return len(self.pairs_df)
+        return len(self.pairs)
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor | str | Tuple[int, int]]:
         """Load a single source-target image pair with keypoint annotations."""
-        row = self.pairs_df.iloc[index]
+        pair_info = self.pairs[index]
         
-        src_img_path = row['src_image']  # e.g., "aeroplane/2008_000033.jpg"
-        tgt_img_path = row['trg_image']  # e.g., "aeroplane/2008_000042.jpg"
-        category = row['category']
+        src_img_path = pair_info['src_image']  # e.g., "aeroplane/2008_000033.jpg"
+        tgt_img_path = pair_info['trg_image']  # e.g., "aeroplane/2008_000042.jpg"
+        category = pair_info['category']
         
         # Load pair annotation
         pair_data = self._load_pair_annotation(src_img_path, tgt_img_path, category)

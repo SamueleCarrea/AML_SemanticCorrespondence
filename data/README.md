@@ -38,13 +38,13 @@ data/
     │
     ├── Layout/                  # Train/val/test splits
     │   ├── large/               # Splits used for evaluation
-    │   │   ├── train_pairs.csv
-    │   │   ├── val_pairs.csv
-    │   │   └── test_pairs.csv
+    │   │   ├── trn.txt          # (53,340 training pairs)
+    │   │   ├── val.txt          # (5,384 validation pairs)
+    │   │   └── test.txt         # (12,234 test pairs)
     │   └── small/               # Small subset for faster training/evaluation
-    │       ├── train_pairs.csv  # (10,652 training pairs)
-    │       ├── val_pairs.csv    # (1,070 validation pairs)
-    │       └── test_pairs.csv   # (2,438 test pairs)
+    │       ├── trn.txt          # (10,652 training pairs)
+    │       ├── val.txt          # (1,070 validation pairs)
+    │       └── test.txt         # (2,438 test pairs)
     │
     └── devkit/                  # SPair-71k development toolkit
         └── README               # See devkit/README for more info
@@ -113,7 +113,7 @@ Each pair annotation file contains keypoint correspondences:
   "trg_bndbox": {"xmin": 15, "ymin": 25, "xmax": 310, "ymax": 420},
   "src_kps": [[x1, y1], [x2, y2], ...],
   "trg_kps": [[x1, y1], [x2, y2], ...],
-  "kps_ids": [0, 1, 2, ...],  // Keypoint semantic IDs
+  "kps_ids": [0, 1, 2, ...],
   "n_pts": 10
 }
 ```
@@ -127,19 +127,19 @@ Per-image annotation with keypoints and segmentation info:
   "image": "2008_000033.jpg",
   "category": "aeroplane",
   "bndbox": {"xmin": 10, "ymin": 20, "xmax": 300, "ymax": 400},
-  "kps": [[x1, y1, v1], [x2, y2, v2], ...],  // v: visibility (0/1/2)
+  "kps": [[x1, y1, v1], [x2, y2, v2], ...],
   "segmentation": "2008_000033.png"
 }
 ```
 
-### `Layout/<size>/<split>_pairs.csv`
+### `Layout/<size>/<split>.txt`
 
-CSV files listing image pairs for each split:
+**Text files** listing image pairs for each split (format: `category:src_img:trg_img` per line):
 
-```csv
-src_image,trg_image,category
-aeroplane/2008_000033.jpg,aeroplane/2008_000042.jpg,aeroplane
-bicycle/2008_001234.jpg,bicycle/2008_001567.jpg,bicycle
+```
+aeroplane:2008_000033.jpg:2008_000042.jpg
+bicycle:2008_001234.jpg:2008_001567.jpg
+bird:2009_000123.jpg:2009_000456.jpg
 ...
 ```
 
@@ -191,8 +191,7 @@ train_dataset = SPairDataset(
     split="train",
     size="small",       # Much faster training
     long_side=480,
-    normalize=True,
-    augment=True
+    normalize=True
 )
 
 # Validation with small split
@@ -201,8 +200,7 @@ val_dataset = SPairDataset(
     split="val",
     size="small",
     long_side=480,
-    normalize=True,
-    augment=False
+    normalize=True
 )
 ```
 
@@ -213,6 +211,7 @@ val_dataset = SPairDataset(
 dataset = SPairDataset(
     root="data/SPair-71k",
     split="test",
+    size="large",
     load_segmentation=True  # Load .png masks from Segmentation/
 )
 
@@ -287,12 +286,12 @@ See `data/SPair-71k/devkit/README` for detailed documentation.
 - **Small split**: Use for rapid prototyping and faster experimentation
 
 ### Keypoint Visibility
-Keypoints have visibility flags:
+Keypoints have visibility flags in `ImageAnnotation`:
 - `0`: Not labeled
 - `1`: Labeled but occluded
 - `2`: Labeled and visible
 
-Always filter using the visibility mask during evaluation.
+Note: `PairAnnotation` only includes valid correspondences.
 
 ### Image Sizes
 - Original images have varying resolutions
@@ -325,12 +324,20 @@ from pathlib import Path
 assert Path("data/SPair-71k").exists(), "Dataset not found!"
 ```
 
-### List available pairs
+### Check split files
 ```python
-import pandas as pd
-pairs_df = pd.read_csv("data/SPair-71k/Layout/large/test_pairs.csv")
-print(f"Found {len(pairs_df)} test pairs")
-print(pairs_df.head())
+from pathlib import Path
+
+# Check if split files exist
+layout_dir = Path("data/SPair-71k/Layout/large")
+print(f"Train file exists: {(layout_dir / 'trn.txt').exists()}")
+print(f"Val file exists: {(layout_dir / 'val.txt').exists()}")
+print(f"Test file exists: {(layout_dir / 'test.txt').exists()}")
+
+# Count pairs
+with open(layout_dir / "test.txt") as f:
+    lines = f.readlines()
+    print(f"Found {len(lines)} test pairs")
 ```
 
 ### Memory issues
