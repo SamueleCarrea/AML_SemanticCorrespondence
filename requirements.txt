@@ -15,7 +15,8 @@ timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
 
 
 # Data Processing
-numpy>=2.0.0,<2.3.0  # Updated to satisfy opencv, jax, shap, pytensor
+numpy>=1.23.0,<2.0.0  # IMPORTANTE: Colab richiede numpy 1.x per TensorFlow/Numba
+pillow>=9.0.0,<11.0.0
 pillow>=9.0.0,<11.0.0
 opencv-python>=4.8.0
 scikit-image>=0.20.0
