@@ -126,34 +126,16 @@ class _BaseExtractor(nn.Module):
         self, image: torch.Tensor, return_padding: bool = False
     ) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, Tuple[int, int, int, int]]:
         """Extract features with automatic padding."""
-        # Pad image
         if image.dim() == 3:
             image = image.unsqueeze(0)
-            
+        
         B, C, H, W = image.shape
         padded_img, padding = pad_to_patch_size(image, patch_size=self.stride)
         
-        # Store padded shape for _forward_features
         self._last_img_shape = padded_img.shape
         
-        # DEBUG: Print before forward
-        print(f"🔍 DEBUG extract_feats:")
-        print(f"   Original image: {(B, C, H, W)}")
-        print(f"   Padded image: {padded_img.shape}")
-        print(f"   Padding: {padding}")
-        print(f"   Stride: {self.stride}")
-        
-        # Forward through model
-        features = self._forward_features(padded_img)  # (B, C, H_feat, W_feat)
-        
-        # DEBUG: Print after forward
-        print(f"   Features after forward: {features.shape}")
-        
-        # Unpad features
+        features = self._forward_features(padded_img)
         features = unpad_features(features, padding, patch_size=self.stride)
-        
-        # DEBUG: Print after unpad
-        print(f"   Features after unpad: {features.shape}\n")
         
         if return_padding:
             return features, self.stride, padding
@@ -204,45 +186,24 @@ class DINOv2Extractor(_BaseExtractor):
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through DINOv2."""
-        # DEBUG: Print input
-        print(f"   🔍 _forward_features input: {image.shape}")
-        
         output = self.model.forward_features(image)
-        patch_tokens = output['x_norm_patchtokens']  # (B, N, D)
-        
-        # DEBUG: Print patch tokens shape
-        print(f"   🔍 patch_tokens.shape: {patch_tokens.shape}")
-        print(f"   🔍 Total elements: {patch_tokens.numel()}")
+        patch_tokens = output['x_norm_patchtokens']
         
         B, N, D = patch_tokens.shape
         
-        # Calculate H and W from padded image shape and stride
         if self._last_img_shape is not None:
             _, _, H_img, W_img = self._last_img_shape
             H = H_img // self.stride
             W = W_img // self.stride
             
-            print(f"   🔍 Calculated H={H}, W={W} from image shape {self._last_img_shape}")
-            print(f"   🔍 Expected N = {H*W}, got N = {N}")
-            
-            # Verify dimensions match
             if H * W != N:
-                print(f"   ⚠️  MISMATCH! Falling back to sqrt(N)")
                 H = W = int(math.sqrt(N))
                 if H * W != N:
-                    raise RuntimeError(
-                        f"Cannot reshape {N} patches into grid. "
-                        f"sqrt(N) = {math.sqrt(N)}"
-                    )
+                    raise RuntimeError(f"Cannot reshape {N} patches")
         else:
             H = W = int(math.sqrt(N))
         
-        print(f"   🔍 Final reshape target: ({B}, {H}, {W}, {D})")
-        
-        features = patch_tokens.reshape(B, H, W, D).permute(0, 3, 1, 2)  # (B, D, H, W)
-        
-        print(f"   🔍 Features output: {features.shape}")
-        
+        features = patch_tokens.reshape(B, H, W, D).permute(0, 3, 1, 2)
         return features
 
 
