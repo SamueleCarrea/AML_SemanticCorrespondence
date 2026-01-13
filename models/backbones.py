@@ -2,17 +2,13 @@
 
 Supports DINOv2, DINOv3, and SAM with automatic padding for variable image sizes.
 """
-
-import math
-import os
-import re
 import sys
-from pathlib import Path
-from typing import Dict, Optional, Tuple
-
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 # Add parent directory to path for importing utils
 sys.path.append(str(Path(__file__).parent.parent))
