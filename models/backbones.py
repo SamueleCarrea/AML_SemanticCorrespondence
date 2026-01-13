@@ -12,7 +12,7 @@ from typing import Dict, Optional, Tuple
 
 # Add parent directory to path for importing utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils.image_utils import pad_to_patch_size, unpad_features
+#from utils.image_utils import pad_to_patch_size, unpad_features
 
 
 def _default_device(device: Optional[str] = None) -> torch.device:
