@@ -224,7 +224,7 @@ class DINOv3Extractor(_BaseExtractor):
         self.stride = self._infer_patch_size(self.model)
 
     def _load_model(
-        self, variant: str
+        self, variant: str, checkpoint_path: Optional[str], allow_hub_download: bool
     ) -> nn.Module:
         """Load DINOv3 model"""
         model = torch.hub.load('facebookresearch/dinov3', variant, pretrained=False)
