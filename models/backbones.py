@@ -212,19 +212,17 @@ class DINOv3Extractor(_BaseExtractor):
     def __init__(
         self,
         variant: str = "dinov3_vitb16",
-        checkpoint_path: Optional[str] = None,
         device: Optional[str] = None,
-        allow_hub_download: bool = True,
     ) -> None:
         super().__init__(device)
         self.variant = variant
-        self.model = self._load_model(variant, checkpoint_path, allow_hub_download)
+        self.model = self._load_model(variant)
         self.model.eval()
         self.model.to(self.device)
         self.stride = self._infer_patch_size(self.model)
 
     def _load_model(
-        self, variant: str, checkpoint_path: Optional[str], allow_hub_download: bool
+        self, variant: str
     ) -> nn.Module:
         """Load DINOv3 model"""
         model = torch.hub.load('facebookresearch/dinov3', variant, pretrained=False)
