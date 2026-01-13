@@ -120,6 +120,7 @@ class _BaseExtractor(nn.Module):
     def __init__(self, device: Optional[str] = None) -> None:
         super().__init__()
         self.device = _default_device(device)
+        self._last_img_shape = None  # Store padded image shape
 
     def extract_feats(
         self, image: torch.Tensor, return_padding: bool = False
@@ -131,6 +132,9 @@ class _BaseExtractor(nn.Module):
             
         B, C, H, W = image.shape
         padded_img, padding = pad_to_patch_size(image, patch_size=self.stride)
+        
+        # Store padded shape for _forward_features
+        self._last_img_shape = padded_img.shape
         
         # Forward through model
         features = self._forward_features(padded_img)  # (B, C, H_feat, W_feat)
@@ -191,7 +195,22 @@ class DINOv2Extractor(_BaseExtractor):
         patch_tokens = output['x_norm_patchtokens']  # (B, N, D)
         
         B, N, D = patch_tokens.shape
-        H = W = int(math.sqrt(N))
+        
+        # Calculate H and W from padded image shape and stride
+        if self._last_img_shape is not None:
+            _, _, H_img, W_img = self._last_img_shape
+            H = H_img // self.stride
+            W = W_img // self.stride
+        else:
+            # Fallback: assume square
+            H = W = int(math.sqrt(N))
+        
+        # Verify dimensions match
+        if H * W != N:
+            raise RuntimeError(
+                f"Dimension mismatch: H={H}, W={W}, H*W={H*W}, but N={N}. "
+                f"Image shape: {self._last_img_shape}, stride: {self.stride}"
+            )
         
         features = patch_tokens.reshape(B, H, W, D).permute(0, 3, 1, 2)  # (B, D, H, W)
         return features
@@ -240,7 +259,19 @@ class DINOv3Extractor(_BaseExtractor):
         patch_tokens = output['x_norm_patchtokens']
         
         B, N, D = patch_tokens.shape
-        H = W = int(math.sqrt(N))
+        
+        # Calculate H and W from padded image shape
+        if self._last_img_shape is not None:
+            _, _, H_img, W_img = self._last_img_shape
+            H = H_img // self.stride
+            W = W_img // self.stride
+        else:
+            H = W = int(math.sqrt(N))
+        
+        if H * W != N:
+            raise RuntimeError(
+                f"Dimension mismatch: H={H}, W={W}, H*W={H*W}, but N={N}"
+            )
         
         features = patch_tokens.reshape(B, H, W, D).permute(0, 3, 1, 2)
         return features
