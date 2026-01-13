@@ -233,14 +233,10 @@ class DINOv3Extractor(_BaseExtractor):
     ) -> nn.Module:
         """Load DINOv3 model (fallback to DINOv2 if not available)."""
         if checkpoint_path and Path(checkpoint_path).exists():
-            model = torch.hub.load('facebookresearch/dinov2', variant, pretrained=False)
+            model = torch.hub.load('facebookresearch/dinov3', variant, pretrained=False)
             return _load_state_dict(model, checkpoint_path)
         elif allow_hub_download:
-            try:
-                return torch.hub.load('facebookresearch/dinov2', variant, pretrained=True)
-            except Exception:
-                print(f"  Warning: {variant} not found, using dinov2_vitb14 instead")
-                return torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14', pretrained=True)
+            return torch.hub.load('facebookresearch/dinov3', variant, pretrained=True)
         else:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
