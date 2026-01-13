@@ -176,13 +176,8 @@ class DINOv2Extractor(_BaseExtractor):
         self, variant: str, checkpoint_path: Optional[str], allow_hub_download: bool
     ) -> nn.Module:
         """Load DINOv2 model."""
-        if checkpoint_path and Path(checkpoint_path).exists():
-            model = torch.hub.load('facebookresearch/dinov2', variant, pretrained=False)
-            return _load_state_dict(model, checkpoint_path)
-        elif allow_hub_download:
-            return torch.hub.load('facebookresearch/dinov2', variant, pretrained=True)
-        else:
-            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        return torch.hub.load('facebookresearch/dinov2', variant, pretrained=True)
+
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through DINOv2."""
@@ -229,17 +224,12 @@ class DINOv3Extractor(_BaseExtractor):
         self.stride = self._infer_patch_size(self.model)
 
     def _load_model(
-        self, variant: str, checkpoint_path: Optional[str], allow_hub_download: bool
+        self, variant: str
     ) -> nn.Module:
-        """Load DINOv3 model (fallback to DINOv2 if not available)."""
-        if checkpoint_path and Path(checkpoint_path).exists():
-            model = torch.hub.load('facebookresearch/dinov3', variant, pretrained=False)
-            return _load_state_dict(model, checkpoint_path)
-        elif allow_hub_download:
-            return torch.hub.load('facebookresearch/dinov3', variant, pretrained=True)
-        else:
-            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
+        """Load DINOv3 model"""
+        model = torch.hub.load('facebookresearch/dinov3', variant, pretrained=False)
+        return _load_state_dict(model, '/content/drive/MyDrive/AML/checkpoints/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth')
+        
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through DINOv3."""
         output = self.model.forward_features(image)
