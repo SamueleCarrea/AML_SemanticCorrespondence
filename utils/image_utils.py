@@ -6,7 +6,7 @@ Handles variable image sizes and multiple backbone architectures with different 
 import torch
 import torch.nn.functional as F
 from typing import Tuple
-from models.backbones import DINOv2Extractor, DINOv3Extractor, SAMImageEncoder
+#from models.backbones import DINOv2Extractor, DINOv3Extractor, SAMImageEncoder
 
 
 def make_divisible(x: int, divisor: int) -> int:
