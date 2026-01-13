@@ -5,6 +5,7 @@
 
 # Vision Backbones & Models
 timm>=0.9.0  # PyTorch Image Models (ViT, ResNet, etc.)
+torchmetrics>=1.0.0  # Required by DINOv3
 
 # DINOv2 (loaded via torch.hub, no pip install needed)
 # DINOv3 (not yet released publicly)
