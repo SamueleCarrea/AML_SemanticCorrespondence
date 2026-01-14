@@ -306,6 +306,7 @@ class SAMImageEncoder(_BaseExtractor):
             image = image.unsqueeze(0)
         
         B, C, orig_H, orig_W = image.shape
+        print(f"[SAM DEBUG] Input image shape: {image.shape} (B={B}, C={C}, H={orig_H}, W={orig_W})")
         
         # Resize to SAM's expected input size (1024x1024)
         resized_img = F.interpolate(
@@ -314,16 +315,20 @@ class SAMImageEncoder(_BaseExtractor):
             mode='bilinear', 
             align_corners=False
         )
+        print(f"[SAM DEBUG] Resized to SAM input: {resized_img.shape}")
         
         self._last_img_shape = resized_img.shape
         
         # Extract features at fixed resolution
+        print(f"[SAM DEBUG] Calling _forward_features...")
         features = self._forward_features(resized_img)
+        print(f"[SAM DEBUG] Extracted features shape: {features.shape}")
         
         # Resize features back to match original aspect ratio
         _, _, feat_H, feat_W = features.shape
         target_H = orig_H // self.stride
         target_W = orig_W // self.stride
+        print(f"[SAM DEBUG] Target feature size: ({target_H}, {target_W})")
         
         features = F.interpolate(
             features,
@@ -331,6 +336,7 @@ class SAMImageEncoder(_BaseExtractor):
             mode='bilinear',
             align_corners=False
         )
+        print(f"[SAM DEBUG] Final features shape: {features.shape}")
         
         if return_padding:
             return features, self.stride, (0, 0, 0, 0)  # No padding used
@@ -338,5 +344,8 @@ class SAMImageEncoder(_BaseExtractor):
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through SAM encoder."""
+        print(f"[SAM DEBUG] _forward_features input: {image.shape}")
+        print(f"[SAM DEBUG] Expected img_size: {self.img_size}")
         features = self.model.image_encoder(image)
+        print(f"[SAM DEBUG] _forward_features output: {features.shape}")
         return features
