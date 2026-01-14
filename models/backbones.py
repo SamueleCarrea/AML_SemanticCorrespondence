@@ -272,6 +272,7 @@ class SAMImageEncoder(_BaseExtractor):
         self.model.eval()
         self.model.to(self.device)
         self.stride = 16  # SAM uses patch_size=16
+        self.img_size = 1024  # SAM expects 1024x1024 input
 
     def _load_model(
         self, variant: str, checkpoint_path: Optional[str], allow_hub_download: bool
@@ -296,6 +297,44 @@ class SAMImageEncoder(_BaseExtractor):
                 raise FileNotFoundError(f"SAM checkpoint not found: {checkpoint_path}")
         except ImportError:
             raise ImportError("SAM requires: pip install git+https://github.com/facebookresearch/segment-anything.git")
+
+    def extract_feats(
+        self, image: torch.Tensor, return_padding: bool = False
+    ) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, Tuple[int, int, int, int]]:
+        """Extract features - SAM requires resize to 1024x1024."""
+        if image.dim() == 3:
+            image = image.unsqueeze(0)
+        
+        B, C, orig_H, orig_W = image.shape
+        
+        # Resize to SAM's expected input size (1024x1024)
+        resized_img = F.interpolate(
+            image, 
+            size=(self.img_size, self.img_size), 
+            mode='bilinear', 
+            align_corners=False
+        )
+        
+        self._last_img_shape = resized_img.shape
+        
+        # Extract features at fixed resolution
+        features = self._forward_features(resized_img)
+        
+        # Resize features back to match original aspect ratio
+        _, _, feat_H, feat_W = features.shape
+        target_H = orig_H // self.stride
+        target_W = orig_W // self.stride
+        
+        features = F.interpolate(
+            features,
+            size=(target_H, target_W),
+            mode='bilinear',
+            align_corners=False
+        )
+        
+        if return_padding:
+            return features, self.stride, (0, 0, 0, 0)  # No padding used
+        return features, self.stride
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through SAM encoder."""
