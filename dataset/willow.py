@@ -36,8 +36,8 @@ class PFWillowDataset(Dataset):
         
         self.pairs = pd.read_csv(pairs_file)
         
-        # Extract unique categories from folder names
-        self.categories = self._get_categories()
+        # Extract unique categories
+        self.categories = sorted(self.pairs['category'].unique().tolist())
         
         print(f"Loaded {len(self.pairs)} test pairs from PF-WILLOW")
         print(f"Found categories: {self.categories}")
@@ -45,27 +45,11 @@ class PFWillowDataset(Dataset):
         # Setup transforms
         self.img_transforms = self._build_transforms()
     
-    def _get_categories(self):
-        """Extract category names from folder structure"""
-        folders = [d.name for d in self.root.iterdir() if d.is_dir()]
-        # Remove suffixes like (woC), (wC), (S), (M), (G)
-        categories = set()
-        for folder in folders:
-            # Extract base category name (before parenthesis)
-            if '(' in folder:
-                cat = folder.split('(')[0]
-            else:
-                cat = folder
-            categories.add(cat)
-        
-        return sorted(list(categories))
-    
     def _build_transforms(self):
         """Build image transformation pipeline"""
         transforms = [T.ToTensor()]
         
         if self.normalize:
-            # ImageNet normalization
             transforms.append(
                 T.Normalize(mean=[0.485, 0.456, 0.406],
                            std=[0.229, 0.224, 0.225])
@@ -110,8 +94,8 @@ class PFWillowDataset(Dataset):
         kps = mat_data['kps']  # Shape: (10, 3)
         
         # Separate coordinates and visibility
-        coords = kps[:, :2]  # (10, 2)
-        visibility = kps[:, 2]  # (10,)
+        coords = kps[:, :2].astype(np.float32)  # (10, 2)
+        visibility = kps[:, 2].astype(np.int32)  # (10,)
         
         return coords, visibility
     
@@ -131,21 +115,30 @@ class PFWillowDataset(Dataset):
         """
         row = self.pairs.iloc[idx]
         
-        # Parse pair info
-        src_name = row['source_image']
-        tgt_name = row['target_image']
+        # Parse pair info (paths include subset folders)
+        src_path = row['source_image']  # e.g., "car(S)/img_001.png"
+        tgt_path = row['target_image']  # e.g., "car(M)/img_015.png"
         category = row['category']
         
-        # Load images
-        src_img = Image.open(self.root / 'JPEGImages' / src_name).convert('RGB')
-        tgt_img = Image.open(self.root / 'JPEGImages' / tgt_name).convert('RGB')
+        # Load images (images are directly in subset folders)
+        src_img_path = self.root / src_path
+        tgt_img_path = self.root / tgt_path
         
-        # Load annotations
-        src_ann = self.root / 'Annotations' / src_name.replace('.jpg', '.mat')
-        tgt_ann = self.root / 'Annotations' / tgt_name.replace('.jpg', '.mat')
+        assert src_img_path.exists(), f"Source image not found: {src_img_path}"
+        assert tgt_img_path.exists(), f"Target image not found: {tgt_img_path}"
         
-        src_kps, src_vis = self._load_mat_annotation(src_ann)
-        tgt_kps, tgt_vis = self._load_mat_annotation(tgt_ann)
+        src_img = Image.open(src_img_path).convert('RGB')
+        tgt_img = Image.open(tgt_img_path).convert('RGB')
+        
+        # Load annotations (.mat files in same directory as images)
+        src_ann_path = src_img_path.with_suffix('.mat')
+        tgt_ann_path = tgt_img_path.with_suffix('.mat')
+        
+        assert src_ann_path.exists(), f"Source annotation not found: {src_ann_path}"
+        assert tgt_ann_path.exists(), f"Target annotation not found: {tgt_ann_path}"
+        
+        src_kps, src_vis = self._load_mat_annotation(src_ann_path)
+        tgt_kps, tgt_vis = self._load_mat_annotation(tgt_ann_path)
         
         # Store original sizes
         src_size = torch.tensor(src_img.size[::-1])  # (H, W)
@@ -177,16 +170,11 @@ class PFWillowDataset(Dataset):
     @staticmethod
     def collate_fn(batch):
         """Custom collate function for batching"""
-        # Stack images
         src_imgs = torch.stack([item['src_img'] for item in batch])
         tgt_imgs = torch.stack([item['tgt_img'] for item in batch])
-        
-        # Stack keypoints and masks
         src_kps = torch.stack([item['src_kps'] for item in batch])
         tgt_kps = torch.stack([item['tgt_kps'] for item in batch])
         valid_masks = torch.stack([item['valid_mask'] for item in batch])
-        
-        # Keep as lists
         categories = [item['category'] for item in batch]
         
         return {
