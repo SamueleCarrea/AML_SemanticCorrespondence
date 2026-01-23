@@ -163,42 +163,42 @@ class DINOv2Extractor(_BaseExtractor):
         variant: str = "dinov2_vitb14",
         checkpoint_path: Optional[str] = None,
         device: Optional[str] = None,
-        allow_hub_download: bool = True,
     ) -> None:
         super().__init__(device)
         self.variant = variant
-        self.model = self._load_model(variant, checkpoint_path, allow_hub_download)
+        self.model = self._load_model(variant, checkpoint_path)
         self.model.eval()
         self.model.to(self.device)
         self.stride = self._infer_patch_size(self.model)
 
     def _load_model(
-        self, variant: str, checkpoint_path: Optional[str], allow_hub_download: bool
+        self, variant: str, checkpoint_path: Optional[str]
     ) -> nn.Module:
         """Load DINOv2 model."""
         return torch.hub.load('facebookresearch/dinov2', variant, pretrained=True)
 
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
-        """Forward pass through DINOv2."""
+        """Forward pass through DINOv2. Returns (B, H, W, D)."""
         output = self.model.forward_features(image)
         patch_tokens = output['x_norm_patchtokens']
         
         B, N, D = patch_tokens.shape
         
+        # Calculate H and W from padded image shape
         if self._last_img_shape is not None:
             _, _, H_img, W_img = self._last_img_shape
             H = H_img // self.stride
             W = W_img // self.stride
-            
-            if H * W != N:
-                H = W = int(math.sqrt(N))
-                if H * W != N:
-                    raise RuntimeError(f"Cannot reshape {N} patches")
         else:
             H = W = int(math.sqrt(N))
         
-        features = patch_tokens.reshape(B, H, W, D).permute(0, 3, 1, 2)
+        if H * W != N:
+            raise RuntimeError(
+                f"Dimension mismatch: H={H}, W={W}, H*W={H*W}, but N={N}"
+            )
+        
+        features = patch_tokens.reshape(B, H, W, D)
         return features
 
 
@@ -248,7 +248,7 @@ class DINOv3Extractor(_BaseExtractor):
                 f"Dimension mismatch: H={H}, W={W}, H*W={H*W}, but N={N}"
             )
         
-        features = patch_tokens.reshape(B, H, W, D).permute(0, 3, 1, 2)
+        features = patch_tokens.reshape(B, H, W, D)
         return features
 
 
@@ -256,7 +256,7 @@ class DINOv3Extractor(_BaseExtractor):
 # SAM Image Encoder
 # ============================================================================
 
-class SAMImageEncoder(_BaseExtractor):
+class SAMImageEncoder(nn.Module):
     """Segment Anything Model (SAM) image encoder."""
 
     def __init__(
@@ -266,7 +266,8 @@ class SAMImageEncoder(_BaseExtractor):
         device: Optional[str] = None,
         allow_hub_download: bool = True,
     ) -> None:
-        super().__init__(device)
+        super().__init__()
+        self.device = _default_device(device)
         self.variant = variant
         self.model = self._load_model(variant, checkpoint_path, allow_hub_download)
         self.model.eval()
@@ -298,10 +299,11 @@ class SAMImageEncoder(_BaseExtractor):
         except ImportError:
             raise ImportError("SAM requires: pip install git+https://github.com/facebookresearch/segment-anything.git")
 
+    @torch.no_grad()
     def extract_feats(
         self, image: torch.Tensor, return_padding: bool = False
     ) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, Tuple[int, int, int, int]]:
-        """Extract features - SAM requires resize to 1024x1024."""
+        """Extract features - SAM requires resize to 1024x1024. Returns (B, H, W, D)."""
         if image.dim() == 3:
             image = image.unsqueeze(0)
         
@@ -315,10 +317,8 @@ class SAMImageEncoder(_BaseExtractor):
             align_corners=False
         )
         
-        self._last_img_shape = resized_img.shape
-        
         # Extract features at fixed resolution
-        features = self._forward_features(resized_img)
+        features = self._forward_features(resized_img)  # (B, D, H_sam, W_sam)
         
         # Resize features back to match original aspect ratio
         _, _, feat_H, feat_W = features.shape
@@ -332,11 +332,14 @@ class SAMImageEncoder(_BaseExtractor):
             align_corners=False
         )
         
+        # Permute to (B, H, W, D) for consistency
+        features = features.permute(0, 2, 3, 1)
+        
         if return_padding:
             return features, self.stride, (0, 0, 0, 0)  # No padding used
         return features, self.stride
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
-        """Forward pass through SAM encoder."""
+        """Forward pass through SAM encoder. Returns (B, D, H, W)."""
         features = self.model.image_encoder(image)
         return features
