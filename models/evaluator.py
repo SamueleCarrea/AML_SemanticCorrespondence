@@ -89,7 +89,7 @@ class UnifiedEvaluator:
 
             # Compute metrics
             H, W = tgt_img.shape[2:]
-            pck_scores = compute_pck(tgt_kps_pred, tgt_kps_valid, (H, W), self.thresholds)
+            pck_scores = compute_pck(tgt_kps_pred, tgt_kps_valid, image_size=(H, W), thresholds=self.thresholds)
 
             # Store results
             for metric, value in pck_scores.items():
