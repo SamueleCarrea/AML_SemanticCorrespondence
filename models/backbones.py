@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+import contextlib
 
 
 # ============================================================================
@@ -299,45 +300,47 @@ class SAMImageEncoder(nn.Module):
         except ImportError:
             raise ImportError("SAM requires: pip install git+https://github.com/facebookresearch/segment-anything.git")
 
-    @torch.no_grad()
     def extract_feats(
         self, image: torch.Tensor, return_padding: bool = False
     ) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, Tuple[int, int, int, int]]:
         """Extract features - SAM requires resize to 1024x1024. Returns (B, H, W, D)."""
-        if image.dim() == 3:
-            image = image.unsqueeze(0)
-        
-        B, C, orig_H, orig_W = image.shape
-        
-        # Resize to SAM's expected input size (1024x1024)
-        resized_img = F.interpolate(
-            image, 
-            size=(self.img_size, self.img_size), 
-            mode='bilinear', 
-            align_corners=False
-        )
-        
-        # Extract features at fixed resolution
-        features = self._forward_features(resized_img)  # (B, D, H_sam, W_sam)
-        
-        # Resize features back to match original aspect ratio
-        _, _, feat_H, feat_W = features.shape
-        target_H = orig_H // self.stride
-        target_W = orig_W // self.stride
-        
-        features = F.interpolate(
-            features,
-            size=(target_H, target_W),
-            mode='bilinear',
-            align_corners=False
-        )
-        
-        # Permute to (B, H, W, D) for consistency
-        features = features.permute(0, 2, 3, 1)
-        
-        if return_padding:
-            return features, self.stride, (0, 0, 0, 0)  # No padding used
-        return features, self.stride
+        # Usa no_grad solo quando il modulo è in eval (self.training == False)
+        ctx = contextlib.nullcontext() if self.training else torch.no_grad()
+        with ctx:
+            if image.dim() == 3:
+                image = image.unsqueeze(0)
+
+            B, C, orig_H, orig_W = image.shape
+
+            # Resize to SAM's expected input size (1024x1024)
+            resized_img = F.interpolate(
+                image,
+                size=(self.img_size, self.img_size),
+                mode='bilinear',
+                align_corners=False
+            )
+
+            # Extract features at fixed resolution
+            features = self._forward_features(resized_img)  # (B, D, H_sam, W_sam)
+
+            # Resize features back to match original aspect ratio
+            _, _, feat_H, feat_W = features.shape
+            target_H = orig_H // self.stride
+            target_W = orig_W // self.stride
+
+            features = F.interpolate(
+                features,
+                size=(target_H, target_W),
+                mode='bilinear',
+                align_corners=False
+            )
+
+            # Permute to (B, H, W, D) for consistency
+            features = features.permute(0, 2, 3, 1)
+
+            if return_padding:
+                return features, self.stride, (0, 0, 0, 0)  # No padding used
+            return features, self.stride
 
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through SAM encoder. Returns (B, D, H, W)."""
