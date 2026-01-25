@@ -90,8 +90,7 @@ class FinetunableBackbone(nn.Module):
             features: (B, H, W, D)
         """
         feat_map, stride = self.extractor.extract_feats(image)
-        features = feat_map.permute(0, 2, 3, 1)  # (B, H, W, D)
-        return features
+        return feat_map
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass."""
