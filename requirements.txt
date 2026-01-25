@@ -51,4 +51,4 @@ ruff>=0.0.270
 # jupyter-client - già installato in Colab
 
 wandb>=0.15.0
-tensorboard\>=2.13.0
+tensorboard>=2.13.0
