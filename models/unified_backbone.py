@@ -81,14 +81,14 @@ class UnifiedBackbone(nn.Module):
         matching_files = list(checkpoint_dir_path.glob(checkpoint_name))
 
         if not matching_files:
-            print(f"Finetuned checkpoint not found: {checkpoint_pattern}")
+            print(f"Finetuned checkpoint not found: {checkpoint_name}")
             print(f"Using pretrained weights instead")
             return
 
-        print("/nFiles founded: \n")
+        print("\nFiles found: \n")
         for f in matching_files:
             print(f"{f}\n")
-            checkpoint_path = matching_files[0]
+        checkpoint_path = matching_files[0]
             
         try:
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
@@ -100,8 +100,25 @@ class UnifiedBackbone(nn.Module):
             else:
                 state_dict = checkpoint
                 print(f"   (loaded from {checkpoint_path.name})")
-            self.extractor.load_state_dict(state_dict, strict=False)
-                    
+
+            # Remove 'extractor.' prefix if present (from FinetunableBackbone wrapper)
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                if key.startswith('extractor.'):
+                    new_key = key[len('extractor.'):]
+                    new_state_dict[new_key] = value
+                else:
+                    new_state_dict[key] = value
+            
+            # Load weights
+            missing_keys, unexpected_keys = self.extractor.load_state_dict(new_state_dict, strict=False)
+            
+            print(f"   ✓ Loaded {len(new_state_dict) - len(unexpected_keys)}/{len(new_state_dict)} keys")
+            if missing_keys:
+                print(f"   ⚠ Missing keys: {len(missing_keys)}")
+            if unexpected_keys:
+                print(f"   ⚠ Unexpected keys: {len(unexpected_keys)}")
+
         except Exception as e:
             print(f"   ⚠ Failed to load finetuned weights: {e}")
             print(f"   Using pretrained weights instead")
