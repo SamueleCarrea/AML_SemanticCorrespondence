@@ -89,18 +89,23 @@ class UnifiedBackbone(nn.Module):
         for f in matching_files:
             print(f"{f}\n")
         checkpoint_path = matching_files[0]
-            
+        print(f"\nLoading finetuned weights from: {checkpoint_path.name}")
+        
         try:
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
                 state_dict = checkpoint["model_state_dict"]
                 print(f"   (loaded from {checkpoint_path.name})")
                 if "best_pck@0.10" in checkpoint:
-                    print(f"    (PCK@0.10: {checkpoint['best_pck@0.10']:.2f})")
+                    print(f"   Training PCK@0.10: {checkpoint['best_pck@0.10']:.2f}")
             else:
                 state_dict = checkpoint
-                print(f"   (loaded from {checkpoint_path.name})")
 
+            # DEBUG: Print sample keys before conversion
+            print(f"\n   Original state_dict keys (first 5):")
+            for i, key in enumerate(list(state_dict.keys())[:5]):
+                print(f"     {key}")
+            
             # Remove 'extractor.' prefix if present (from FinetunableBackbone wrapper)
             new_state_dict = {}
             for key, value in state_dict.items():
@@ -110,18 +115,36 @@ class UnifiedBackbone(nn.Module):
                 else:
                     new_state_dict[key] = value
             
+            # DEBUG: Print sample keys after conversion
+            print(f"\n   Converted state_dict keys (first 5):")
+            for i, key in enumerate(list(new_state_dict.keys())[:5]):
+                print(f"     {key}")
+            
+            # DEBUG: Print sample model keys
+            print(f"\n   Model expects keys (first 5):")
+            for i, key in enumerate(list(self.extractor.state_dict().keys())[:5]):
+                print(f"     {key}")
+            
             # Load weights
             missing_keys, unexpected_keys = self.extractor.load_state_dict(new_state_dict, strict=False)
             
-            print(f"   ✓ Loaded {len(new_state_dict) - len(unexpected_keys)}/{len(new_state_dict)} keys")
+            print(f"\n   ✓ Loaded {len(new_state_dict) - len(unexpected_keys)}/{len(new_state_dict)} keys")
             if missing_keys:
                 print(f"   ⚠ Missing keys: {len(missing_keys)}")
+                print(f"   First 5 missing keys:")
+                for k in list(missing_keys)[:5]:
+                    print(f"     {k}")
             if unexpected_keys:
                 print(f"   ⚠ Unexpected keys: {len(unexpected_keys)}")
-
+                print(f"   First 5 unexpected keys:")
+                for k in list(unexpected_keys)[:5]:
+                    print(f"     {k}")
+                    
         except Exception as e:
             print(f"   ⚠ Failed to load finetuned weights: {e}")
             print(f"   Using pretrained weights instead")
+            import traceback
+            traceback.print_exc()
 
     @torch.no_grad()
     def extract_features(self, image: torch.Tensor) -> torch.Tensor:
