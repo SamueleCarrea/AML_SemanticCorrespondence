@@ -76,21 +76,36 @@ class UnifiedBackbone(nn.Module):
     def _load_finetuned_weights(self):
         """Load finetuned checkpoint if available."""
         
-        checkpoint_name = f"{self.backbone_choice}_finetuned_best.pth"
-        checkpoint_path = Path(self.checkpoint_dir) / checkpoint_name
-        
-        if checkpoint_path.exists():
-            try:
-                state_dict = torch.load(checkpoint_path, map_location=self.device)
-                self.extractor.load_state_dict(state_dict)
-                print(f"   (loaded from {checkpoint_path})")
-            except Exception as e:
-                print(f"   ⚠ Failed to load finetuned weights: {e}")
-                print(f"   Using pretrained weights instead")
-        else:
-            print(f"   ⚠ Finetuned checkpoint not found: {checkpoint_path}")
+        checkpoint_name = f"finetuned_{self.backbone_choice}_*.pt"
+        checkpoint_dir_path = Path(self.checkpoint_dir)
+        matching_files = list(checkpoint_dir_path.glob(checkpoint_name))
+
+        if not matching_files:
+            print(f"Finetuned checkpoint not found: {checkpoint_pattern}")
+            print(f"Using pretrained weights instead")
+            return
+
+        print("/nFiles founded: \n")
+        for f in matching_files:
+            print(f"{f}\n")
+            checkpoint_path = matching_files[0]
+            
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                state_dict = checkpoint["model_state_dict"]
+                print(f"   (loaded from {checkpoint_path.name})")
+                if "best_pck@0.10" in checkpoint:
+                    print(f"    (PCK@0.10: {checkpoint['best_pck@0.10']:.2f})")
+            else:
+                state_dict = checkpoint
+                print(f"   (loaded from {checkpoint_path.name})")
+            self.extractor.load_state_dict(state_dict, strict=False)
+                    
+        except Exception as e:
+            print(f"   ⚠ Failed to load finetuned weights: {e}")
             print(f"   Using pretrained weights instead")
-    
+
     @torch.no_grad()
     def extract_features(self, image: torch.Tensor) -> torch.Tensor:
         """Extract dense features from image.
