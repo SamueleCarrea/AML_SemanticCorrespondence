@@ -72,8 +72,8 @@ class CorrespondenceMatcher:
                 pred_x = max_idx % W_t
 
             # Convert back to pixel coordinates
-            tgt_kps_pred[i, 0] = pred_x * patch_size + patch_size // 2
-            tgt_kps_pred[i, 1] = pred_y * patch_size + patch_size // 2
+            tgt_kps_pred[i, 0] = pred_x * patch_size + patch_size / 2.0
+            tgt_kps_pred[i, 1] = pred_y * patch_size + patch_size / 2.0
 
         return tgt_kps_pred
     

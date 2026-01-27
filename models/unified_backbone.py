@@ -146,13 +146,5 @@ class UnifiedBackbone(nn.Module):
 
     @torch.no_grad()
     def extract_features(self, image: torch.Tensor) -> torch.Tensor:
-        """Extract dense features from image.
-        
-        Args:
-            image: (B, 3, H, W) tensor
-            
-        Returns:
-            features: (B, H_patches, W_patches, D) tensor
-        """
         feat_map, stride = self.extractor.extract_feats(image)
         return feat_map

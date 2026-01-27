@@ -66,7 +66,7 @@ class UnifiedEvaluator:
 
         # Evaluation loop
         pbar = tqdm(self.dataloader, desc=backbone_name) if show_progress else self.dataloader
-
+        nks_total = 0
         for batch in pbar:
             if num_samples and n_processed >= num_samples:
                 break
@@ -109,7 +109,7 @@ class UnifiedEvaluator:
                 if bbox_h > 0 and bbox_w > 0:
                     bbox_size = (bbox_h, bbox_w)
             
-            pck_scores = compute_pck(
+            pck_scores, nks = compute_pck(
                 tgt_kps_pred_orig, 
                 tgt_kps_gt_orig, 
                 bbox_size=bbox_size,              # ✅ Bbox in original coords (if available)
@@ -119,9 +119,10 @@ class UnifiedEvaluator:
 
             # Store results
             for metric, value in pck_scores.items():
-                all_pck[metric].append(value)
+                all_pck[metric].append(value*nks)
                 per_category[category][metric].append(value)
 
+            nks_total += nks
             n_processed += 1
 
             # Update progress
@@ -131,7 +132,7 @@ class UnifiedEvaluator:
 
         # Aggregate results
         results = self._aggregate_results(
-            backbone_name, all_pck, per_category, inference_times, n_processed
+            backbone_name, all_pck, per_category, inference_times, n_processed, nks_total
         )
 
         self.results[backbone_name] = results
@@ -147,7 +148,7 @@ class UnifiedEvaluator:
 
         return results
 
-    def _aggregate_results(self, name, all_pck, per_category, times, n_pairs):
+    def _aggregate_results(self, name, all_pck, per_category, times, n_pairs, nks_total):
         """Aggregate metrics into structured results."""
         
         results = {
@@ -160,7 +161,7 @@ class UnifiedEvaluator:
 
         # Overall metrics
         for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
-            values = all_pck[metric]
+            values = all_pck[metric] / nks_total
             results['overall'][metric] = {
                 'mean': np.mean(values),
                 'std': np.std(values),
