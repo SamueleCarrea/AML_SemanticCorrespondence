@@ -68,9 +68,8 @@ class CorrespondenceLoss(nn.Module):
             src_kp_valid = src_kp[valid]
             tgt_kp_valid = tgt_kp[valid]
 
-            # Convert to patch coordinates (+0.5 for proper rounding, matching matcher.py)
-            src_kp_patch = (src_kp_valid / patch_size + 0.5).long()
-            tgt_kp_patch = (tgt_kp_valid / patch_size + 0.5).long()
+            src_kp_patch = (src_kp_valid / patch_size).long()
+            tgt_kp_patch = (tgt_kp_valid / patch_size).long()
 
             H_s, W_s, D = src_feat.shape
             H_t, W_t, _ = tgt_feat.shape
