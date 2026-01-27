@@ -60,6 +60,10 @@ class UnifiedEvaluator:
         inference_times = []
         n_processed = 0
 
+        # Set backbone to eval mode
+        was_training = matcher.backbone.training
+        matcher.backbone.eval()
+
         # Evaluation loop
         pbar = tqdm(self.dataloader, desc=backbone_name) if show_progress else self.dataloader
 
@@ -67,11 +71,15 @@ class UnifiedEvaluator:
             if num_samples and n_processed >= num_samples:
                 break
 
-            # Extract data
-            src_img = batch['src_img'].to(self.device)
-            tgt_img = batch['tgt_img'].to(self.device)
-            src_kps = batch['src_kps'][0]  # (N, 2)
-            tgt_kps = batch['tgt_kps'][0]
+            src_img = batch['src_img'].to(self.device)  # (1, 3, H_resized, W_resized)
+            tgt_img = batch['tgt_img'].to(self.device)  # (1, 3, H_resized, W_resized)
+            
+            tgt_orig_size = batch['tgt_orig_size'][0]  # (H_orig, W_orig) tensor
+            tgt_scale = batch['tgt_scale'][0].item()    # float scalar
+            
+            # Extract keypoints and masks
+            src_kps = batch['src_kps'][0]  # (N, 2) in resized coords
+            tgt_kps = batch['tgt_kps'][0]  # (N, 2) in resized coords
             valid_mask = batch['valid_mask'][0]
             category = batch['category'][0]
 
@@ -87,9 +95,27 @@ class UnifiedEvaluator:
             tgt_kps_pred = matcher.match(src_img, tgt_img, src_kps_valid)
             inference_times.append(time.time() - start)
 
-            # Compute metrics
-            H, W = tgt_img.shape[2:]
-            pck_scores = compute_pck(tgt_kps_pred, tgt_kps_valid, image_size=(H, W), thresholds=self.thresholds)
+            tgt_kps_pred_orig = tgt_kps_pred / tgt_scale
+            tgt_kps_gt_orig = tgt_kps_valid / tgt_scale
+
+            H_orig, W_orig = tgt_orig_size.tolist()
+            
+            bbox_size = None
+            if 'tgt_bbox' in batch:
+                tgt_bbox = batch['tgt_bbox'][0]  # Bbox in resized coords
+                tgt_bbox_orig = tgt_bbox / tgt_scale  # Convert to original coords
+                bbox_h = (tgt_bbox_orig[3] - tgt_bbox_orig[1]).item()
+                bbox_w = (tgt_bbox_orig[2] - tgt_bbox_orig[0]).item()
+                if bbox_h > 0 and bbox_w > 0:
+                    bbox_size = (bbox_h, bbox_w)
+            
+            pck_scores = compute_pck(
+                tgt_kps_pred_orig, 
+                tgt_kps_gt_orig, 
+                bbox_size=bbox_size,              # ✅ Bbox in original coords (if available)
+                image_size=(H_orig, W_orig),      # ✅ CRITICAL: Use original size!
+                thresholds=self.thresholds
+            )
 
             # Store results
             for metric, value in pck_scores.items():
@@ -110,6 +136,10 @@ class UnifiedEvaluator:
 
         self.results[backbone_name] = results
         self._print_summary(results)
+        
+        # Restore backbone training state
+        if was_training:
+            matcher.backbone.train()
         
         # Cleanup
         del matcher.backbone

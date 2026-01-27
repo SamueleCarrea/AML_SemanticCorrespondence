@@ -31,6 +31,7 @@ def compute_pck(
         >>> pck = compute_pck(pred, gt, image_size=(480, 640))
         >>> print(f"PCK@0.10: {pck['PCK@0.10']:.4f}")
     """
+    # Note: Both image_size and bbox_size expected in (H, W) format
     if bbox_size is not None:
         H, W = bbox_size
         max_dim = max(H, W)

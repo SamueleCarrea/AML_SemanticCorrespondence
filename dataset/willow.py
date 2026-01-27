@@ -158,15 +158,18 @@ class PFWillowDataset(Dataset):
         )
         valid_mask = valid_src & valid_tgt
         
-        src_img_resized, src_kps_resized, _ = self._resize_with_aspect_ratio(
+        src_img_resized, src_kps_resized, (src_scale_x, src_scale_y) = self._resize_with_aspect_ratio(
             src_img, torch.from_numpy(src_kps)
         )
-        tgt_img_resized, tgt_kps_resized, _ = self._resize_with_aspect_ratio(
+        tgt_img_resized, tgt_kps_resized, (tgt_scale_x, tgt_scale_y) = self._resize_with_aspect_ratio(
             tgt_img, torch.from_numpy(tgt_kps)
         )
         
         src_img_tensor = self.img_transforms(src_img_resized)
         tgt_img_tensor = self.img_transforms(tgt_img_resized)
+        
+        src_scale = src_scale_x  # or src_scale_y, they should be equal
+        tgt_scale = tgt_scale_x  # or tgt_scale_y, they should be equal
         
         return {
             'src_img': src_img_tensor,
@@ -175,9 +178,13 @@ class PFWillowDataset(Dataset):
             'tgt_kps': tgt_kps_resized,
             'valid_mask': torch.from_numpy(valid_mask),
             'category': row['category'],      # "car"
-            'subset': row['subset'],          # "car(G)" ← Include full subset
+            'subset': row['subset'],          # "car(G)"
             'src_size': torch.tensor(src_img_resized.size[::-1]),
-            'tgt_size': torch.tensor(tgt_img_resized.size[::-1])
+            'tgt_size': torch.tensor(tgt_img_resized.size[::-1]),
+            'src_scale': torch.tensor(src_scale, dtype=torch.float32),
+            'tgt_scale': torch.tensor(tgt_scale, dtype=torch.float32),
+            'src_orig_size': torch.tensor((src_size_orig[1], src_size_orig[0]), dtype=torch.int64),  # (H, W)
+            'tgt_orig_size': torch.tensor((tgt_size_orig[1], tgt_size_orig[0]), dtype=torch.int64),  # (H, W)
         }
     
     @staticmethod
@@ -189,7 +196,11 @@ class PFWillowDataset(Dataset):
             'tgt_kps': torch.stack([b['tgt_kps'] for b in batch]),
             'valid_mask': torch.stack([b['valid_mask'] for b in batch]),
             'category': [b['category'] for b in batch],
-            'subset': [b['subset'] for b in batch],  # ← Include subset
+            'subset': [b['subset'] for b in batch],
             'src_size': torch.stack([b['src_size'] for b in batch]),
-            'tgt_size': torch.stack([b['tgt_size'] for b in batch])
+            'tgt_size': torch.stack([b['tgt_size'] for b in batch]),
+            'src_scale': torch.stack([b['src_scale'] for b in batch]),
+            'tgt_scale': torch.stack([b['tgt_scale'] for b in batch]),
+            'src_orig_size': torch.stack([b['src_orig_size'] for b in batch]),
+            'tgt_orig_size': torch.stack([b['tgt_orig_size'] for b in batch]),
         }

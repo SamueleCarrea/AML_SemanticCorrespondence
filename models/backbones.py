@@ -136,7 +136,17 @@ class _BaseExtractor(nn.Module):
         self._last_img_shape = padded_img.shape
         
         features = self._forward_features(padded_img)
+        # Convert to (B, D, H, W) for unpad_features
+        if features.dim() == 4 and features.shape[-1] != features.shape[1]:
+            # Assume (B, H, W, D) format from DINO
+            features = features.permute(0, 3, 1, 2)  # → (B, D, H, W)
+            
         features = unpad_features(features, padding, patch_size=self.stride)
+        
+        # Convert back to (B, H, W, D)
+        if features.shape[1] > features.shape[-1]:
+            # Was in (B, D, H, W), convert back
+            features = features.permute(0, 2, 3, 1)  # → (B, H, W, D)
         
         if return_padding:
             return features, self.stride, padding
@@ -300,11 +310,8 @@ class SAMImageEncoder(nn.Module):
         except ImportError:
             raise ImportError("SAM requires: pip install git+https://github.com/facebookresearch/segment-anything.git")
 
-    def extract_feats(
-        self, image: torch.Tensor, return_padding: bool = False
-    ) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, Tuple[int, int, int, int]]:
-        """Extract features - SAM requires resize to 1024x1024. Returns (B, H, W, D)."""
-        # Usa no_grad solo quando il modulo è in eval (self.training == False)
+    def extract_feats(self, image: torch.Tensor, return_padding: bool = False):
+        """Extract features - SAM with padding only (no resize). Returns (B, H, W, D)."""
         ctx = contextlib.nullcontext() if self.training else torch.no_grad()
         with ctx:
             if image.dim() == 3:
@@ -312,36 +319,48 @@ class SAMImageEncoder(nn.Module):
 
             B, C, orig_H, orig_W = image.shape
 
-            # Resize to SAM's expected input size (1024x1024)
-            resized_img = F.interpolate(
-                image,
-                size=(self.img_size, self.img_size),
-                mode='bilinear',
-                align_corners=False
-            )
-
-            # Extract features at fixed resolution
-            features = self._forward_features(resized_img)  # (B, D, H_sam, W_sam)
-
-            # Resize features back to match original aspect ratio
-            _, _, feat_H, feat_W = features.shape
-            target_H = orig_H // self.stride
-            target_W = orig_W // self.stride
-
-            features = F.interpolate(
-                features,
-                size=(target_H, target_W),
-                mode='bilinear',
-                align_corners=False
-            )
-
-            # Permute to (B, H, W, D) for consistency
+            # Padda direttamente a 1024×1024 (senza resize)
+            pad_h = self.img_size - orig_H
+            pad_w = self.img_size - orig_W
+            
+            if pad_h < 0 or pad_w < 0:
+                raise ValueError(
+                    f"SAM input must be ≤1024×1024, got {orig_H}×{orig_W}. "
+                    f"Resize images via dataset (long_side≤1024)"
+                )
+            
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
+            
+            padding = (pad_left, pad_right, pad_top, pad_bottom)
+            padded_img = F.pad(image, padding, mode='constant', value=0.0)
+            
+            # Extract features
+            features = self._forward_features(padded_img)  # (B, D, 64, 64)
+            
+            # Rimuovi padding dalle features
+            patch_pad_left = pad_left // self.stride
+            patch_pad_right = pad_right // self.stride
+            patch_pad_top = pad_top // self.stride
+            patch_pad_bottom = pad_bottom // self.stride
+            
+            _, D, feat_H, feat_W = features.shape
+            h_start = patch_pad_top
+            h_end = feat_H - patch_pad_bottom if patch_pad_bottom > 0 else feat_H
+            w_start = patch_pad_left
+            w_end = feat_W - patch_pad_right if patch_pad_right > 0 else feat_W
+            
+            features = features[:, :, h_start:h_end, w_start:w_end]
+            
+            # Permute to (B, H, W, D)
             features = features.permute(0, 2, 3, 1)
 
             if return_padding:
-                return features, self.stride, (0, 0, 0, 0)  # No padding used
+                return features, self.stride, padding
             return features, self.stride
-
+    
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through SAM encoder. Returns (B, D, H, W)."""
         features = self.model.image_encoder(image)

@@ -35,16 +35,15 @@ class CorrespondenceMatcher:
         Returns:
             tgt_kps_pred: (N, 2) predicted target keypoints
         """
-        # Extract features
+        # Extract features (backbone handles padding/unpadding)
         src_feat = self.backbone.extract_features(src_img)[0]  # (H_s, W_s, D)
         tgt_feat = self.backbone.extract_features(tgt_img)[0]  # (H_t, W_t, D)
-
         H_s, W_s, D = src_feat.shape
         H_t, W_t, _ = tgt_feat.shape
         patch_size = self.backbone.config.patch_size
 
         # Convert keypoint coords to patch indices
-        src_kps_patch = (src_kps / patch_size).long()
+        src_kps_patch = (src_kps / patch_size + 0.5).long()
         src_kps_patch[:, 0] = src_kps_patch[:, 0].clamp(0, W_s - 1)
         src_kps_patch[:, 1] = src_kps_patch[:, 1].clamp(0, H_s - 1)
 

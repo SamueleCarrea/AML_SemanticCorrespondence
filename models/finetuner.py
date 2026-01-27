@@ -4,94 +4,146 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from typing import Optional
-from .backbones import DINOv2Extractor, DINOv3Extractor
-
+from .backbones import DINOv2Extractor, DINOv3Extractor, SAMImageEncoder
 
 class FinetunableBackbone(nn.Module):
-    """Wrapper to make backbone partially trainable.
-    
-    Args:
-        backbone_name: Name of the backbone ('dinov2_vitb14', 'dinov3_vitb16')
-        num_layers_to_finetune: Number of last transformer blocks to unfreeze
-        device: Device to run on
     """
-
+    Unified wrapper:
+    - Loads extractor (DINOv2 / DINOv3 / SAM)
+    - Freezes all params
+    - Unfreezes last N transformer blocks
+    - Optionally enables gradient checkpointing (best-effort, depending on backbone impl)
+    - Returns features as (B, H, W, D)
+    """
     def __init__(
         self,
         backbone_name: str,
-        num_layers_to_finetune: int = 2,
-        device: Optional[str] = None
+        num_layers_to_finetune: int,
+        device: str,
+        use_gradient_checkpointing: bool = False,
     ):
         super().__init__()
         self.backbone_name = backbone_name
         self.num_layers_to_finetune = num_layers_to_finetune
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device
 
-        # Load frozen backbone
-        if 'dinov2' in backbone_name:
-            self.extractor = DINOv2Extractor(
-                variant=backbone_name,
-                device=self.device,
-                allow_hub_download=True
-            )
-        elif 'dinov3' in backbone_name:
-            self.extractor = DINOv3Extractor(
-                variant=backbone_name,
-                device=self.device
-            )
+        # -------------------------
+        # Load extractor
+        # -------------------------
+        if backbone_name.startswith("dinov2"):
+            self.extractor = DINOv2Extractor(variant=backbone_name, device=device)
+            self._model_for_unfreeze = self.extractor.model
+        elif backbone_name.startswith("dinov3"):
+            self.extractor = DINOv3Extractor(variant=backbone_name, device=device)
+            self._model_for_unfreeze = self.extractor.model
+        elif backbone_name.startswith("sam"):
+            variant = backbone_name.replace("sam_", "")  # vit_b / vit_l / vit_h
+            self.extractor = SAMImageEncoder(variant=variant, device=device, allow_hub_download=True)
+            self._model_for_unfreeze = self.extractor.model.image_encoder
         else:
-            raise ValueError(f"Unsupported backbone: {backbone_name}")
+            raise ValueError(f"Unsupported backbone_name: {backbone_name}")
 
         self.stride = self.extractor.stride
 
-        # Freeze all parameters first
-        for param in self.extractor.parameters():
-            param.requires_grad = False
+        # Freeze all
+        for p in self.extractor.parameters():
+            p.requires_grad = False
 
-        # Unfreeze last N transformer blocks
-        self._unfreeze_last_layers(num_layers_to_finetune)
+        # Unfreeze last blocks
+        self._unfreeze_last_blocks(num_layers_to_finetune)
+        if num_layers_to_finetune > 0:
+            self.extractor.train()
+            
+        # Enable gradient checkpointing (best-effort)
+        self._enable_gradient_checkpointing(use_gradient_checkpointing)
 
-        # Count trainable parameters
+        # Infer feature dim with a tiny forward
+        with torch.no_grad():
+            dummy = torch.zeros((1, 3, 224, 224), device=self.device)
+            feat_map, _ = self.extractor.extract_feats(dummy)
+            self.feat_dim = int(feat_map.shape[-1])
+
         n_trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         n_total = sum(p.numel() for p in self.parameters())
 
-        print(f"\n Trainable parameters:")
-        print(f"   Total: {n_total:,}")
-        print(f"   Trainable: {n_trainable:,} ({n_trainable/n_total*100:.2f}%)")
+        print("\n Model summary:")
+        print(f"  Backbone: {backbone_name}")
+        print(f"  Stride:   {self.stride}")
+        print(f"  Feat dim: {self.feat_dim}")
+        print(f"  Trainable params: {n_trainable:,} / {n_total:,} ({(n_trainable/n_total*100 if n_total else 0):.2f}%)\n")
 
-    def _unfreeze_last_layers(self, num_layers: int):
-        """Unfreeze last N transformer blocks."""
-        model = self.extractor.model
+    def _get_blocks(self):
+        m = self._model_for_unfreeze
+        if hasattr(m, "blocks"):
+            return m.blocks
+        if hasattr(m, "encoder") and hasattr(m.encoder, "layers"):
+            return m.encoder.layers
+        return None
 
-        # Access transformer blocks
-        if hasattr(model, 'blocks'):
-            blocks = model.blocks
-        elif hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
-            blocks = model.encoder.layers
-        else:
-            raise AttributeError("Cannot find transformer blocks in model")
+    def _unfreeze_last_blocks(self, num_layers: int):
+        if num_layers <= 0:
+            print("\n Unfreezing: none (frozen backbone)\n")
+            return
 
-        total_blocks = len(blocks)
-        start_idx = max(0, total_blocks - num_layers)
+        blocks = self._get_blocks()
+        if blocks is None:
+            raise AttributeError("Cannot find transformer blocks to unfreeze in the selected backbone.")
 
-        print(f"\n Unfreezing blocks {start_idx} to {total_blocks-1} (total: {total_blocks})")
+        total = len(blocks)
+        start = max(0, total - num_layers)
+        print(f"\n Unfreezing last {num_layers} blocks: [{start}..{total-1}] out of {total}\n")
 
-        for i in range(start_idx, total_blocks):
-            for param in blocks[i].parameters():
-                param.requires_grad = True
+        for i in range(start, total):
+            for p in blocks[i].parameters():
+                p.requires_grad = True
 
-    def extract_features(self, image: torch.Tensor) -> torch.Tensor:
-        """Extract features (with gradient if training).
-        
-        Args:
-            image: (B, 3, H, W)
-            
-        Returns:
-            features: (B, H, W, D)
-        """
-        feat_map, stride = self.extractor.extract_feats(image)
-        return feat_map
+    def _enable_gradient_checkpointing(self, enabled: bool):
+        if not enabled:
+            return
+
+        m = self._model_for_unfreeze
+
+        tried = []
+        if hasattr(m, "gradient_checkpointing_enable"):
+            tried.append("gradient_checkpointing_enable")
+            try:
+                m.gradient_checkpointing_enable()
+                print("✓ Gradient checkpointing enabled via .gradient_checkpointing_enable()")
+                return
+            except Exception as e:
+                print(f"! gradient_checkpointing_enable failed: {e}")
+
+        if hasattr(m, "set_grad_checkpointing"):
+            tried.append("set_grad_checkpointing")
+            try:
+                m.set_grad_checkpointing(True)
+                print("✓ Gradient checkpointing enabled via .set_grad_checkpointing(True)")
+                return
+            except Exception as e:
+                print(f"! set_grad_checkpointing failed: {e}")
+
+        if hasattr(m, "set_gradient_checkpointing"):
+            tried.append("set_gradient_checkpointing")
+            try:
+                m.set_gradient_checkpointing(True)
+                print("✓ Gradient checkpointing enabled via .set_gradient_checkpointing(True)")
+                return
+            except Exception as e:
+                print(f"! set_gradient_checkpointing failed: {e}")
+
+        if hasattr(m, "use_checkpoint"):
+            tried.append("use_checkpoint")
+            try:
+                m.use_checkpoint = True
+                print("✓ Gradient checkpointing enabled via .use_checkpoint=True")
+                return
+            except Exception as e:
+                print(f"! use_checkpoint flag failed: {e}")
+
+        print("! Gradient checkpointing requested but no supported API was found on this backbone.")
+        if tried:
+            print("  Tried:", tried)
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
-        return self.extract_features(image)
+        feat_map, _ = self.extractor.extract_feats(image)
+        return feat_map

@@ -70,8 +70,6 @@ class UnifiedBackbone(nn.Module):
         print(f" ✓")
         print(f"   • Patch size: {self.extractor.stride}")
         print(f"   • Embedding: {self.config.embed_dim}D")
-        if self.finetune_choice:
-            print(f"   • Weights: finetuned")
         
     def _load_finetuned_weights(self):
         """Load finetuned checkpoint if available."""
@@ -106,14 +104,14 @@ class UnifiedBackbone(nn.Module):
             for i, key in enumerate(list(state_dict.keys())[:5]):
                 print(f"     {key}")
             
-            # Remove 'extractor.' prefix if present (from FinetunableBackbone wrapper)
             new_state_dict = {}
             for key, value in state_dict.items():
                 if key.startswith('extractor.'):
-                    new_key = key[len('extractor.'):]
-                    new_state_dict[new_key] = value
-                else:
-                    new_state_dict[key] = value
+                    key = key[len('extractor.'):]
+                if key.startswith('_model_for_unfreeze.'):
+                    key = "model.image_encoder." + key[len("_model_for_unfreeze."):]
+                new_state_dict[key] = value
+
             
             # DEBUG: Print sample keys after conversion
             print(f"\n   Converted state_dict keys (first 5):")

@@ -16,19 +16,16 @@ class CorrespondenceLoss(nn.Module):
     
     Args:
         loss_type: Type of loss ('cosine', 'l2', 'contrastive')
-        negative_margin: Margin for negative samples
         temperature: Temperature for contrastive loss
     """
 
     def __init__(
         self,
         loss_type: str = 'cosine',
-        negative_margin: float = 0.2,
         temperature: float = 0.1
     ):
         super().__init__()
         self.loss_type = loss_type
-        self.negative_margin = negative_margin
         self.temperature = temperature
 
     def forward(
@@ -71,9 +68,9 @@ class CorrespondenceLoss(nn.Module):
             src_kp_valid = src_kp[valid]
             tgt_kp_valid = tgt_kp[valid]
 
-            # Convert to patch coordinates
-            src_kp_patch = (src_kp_valid / patch_size).long()
-            tgt_kp_patch = (tgt_kp_valid / patch_size).long()
+            # Convert to patch coordinates (+0.5 for proper rounding, matching matcher.py)
+            src_kp_patch = (src_kp_valid / patch_size + 0.5).long()
+            tgt_kp_patch = (tgt_kp_valid / patch_size + 0.5).long()
 
             H_s, W_s, D = src_feat.shape
             H_t, W_t, _ = tgt_feat.shape
