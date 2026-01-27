@@ -237,7 +237,7 @@ class DINOv3Extractor(_BaseExtractor):
     ) -> nn.Module:
         """Load DINOv3 model"""
         model = torch.hub.load('facebookresearch/dinov3', variant, pretrained=False)
-        return _load_state_dict(model, str("content/drive/MyDrive/AML/checkpoints/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"))
+        return _load_state_dict(model, '/content/drive/MyDrive/AML/checkpoints/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth')
         
     def _forward_features(self, image: torch.Tensor) -> torch.Tensor:
         """Forward pass through DINOv3."""
