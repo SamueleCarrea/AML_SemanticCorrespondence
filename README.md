@@ -2,7 +2,7 @@
 
 This project implements semantic correspondence methods using pretrained visual foundation models (DINOv2, DINOv3, SAM) on the SPair-71k benchmark dataset.
 
-## 📋 Project Overview
+##  Project Overview
 
 **Semantic correspondence** is the task of finding pixel-level matches between semantically similar parts of objects across different images. For example, given a point on the left eye of a dog in one image, the goal is to find the corresponding left eye in another image of a dog, or even semantically related objects like wolves or cartoon dogs.
 
@@ -11,7 +11,7 @@ This project implements semantic correspondence methods using pretrained visual 
 - Images may come from different domains (photos vs. paintings)
 - Models must distinguish semantically similar but geometrically different parts (e.g., left vs. right paw)
 
-## 🎯 Project Goals
+##  Project Goals
 
 The project is divided into four main stages:
 
@@ -20,7 +20,7 @@ The project is divided into four main stages:
 3. **Better prediction rule**: Replace argmax with window soft-argmax for sub-pixel refinement
 4. **Extension**: Cross-dataset generalization evaluation
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 AML_SemanticCorrespondence/
@@ -48,7 +48,7 @@ AML_SemanticCorrespondence/
 └── README.md                   # This file
 ```
 
-## 📦 Dataset Module
+##  Dataset Module
 
 The `dataset/` folder contains data loading utilities for semantic correspondence benchmarks:
 
@@ -82,28 +82,39 @@ from dataset.spair import SPairDataset
 from dataset.willow import WillowDataset
 
 # Load SPair-71k dataset for training
-train_dataset = SPairDataset(
-    root='path/to/SPair-71k',
-    split='train',
-    category='dog'
+train_dataset_full = SPairDataset(
+  root=SPAIR_ROOT,
+  split='train', 
+  size='large', 
+  long_side=IMG_SIZE,
+  normalize=True, 
+  load_segmentation=False
 )
 
 # Load PF-Willow dataset for cross-dataset evaluation
-eval_dataset = WillowDataset(
-    root='path/to/PF-Willow',
-    split='test',
-    category='dog'
+test_dataset = PFWillowDataset(
+  root=DATASET_ROOT,
+  long_side=IMG_SIZE,
+  normalize=True
 )
 
-# Get a sample
-sample = train_dataset[0]
-src_img = sample['src_img']      # Source image
-tgt_img = sample['tgt_img']      # Target image
-src_kps = sample['src_kps']      # Source keypoints (N, 2)
-tgt_kps = sample['tgt_kps']      # Target keypoints (N, 2)
+# Define a sample
+sample = {
+    "src_img": src_tensor,              # Source image tensor
+    "tgt_img": tgt_tensor,              # Target image tensor
+    "src_kps": src_kps,                 # Source keypoints
+    "tgt_kps": tgt_kps,                 # Target keypoints
+    "valid_mask": valid_mask,           # Binary mask indicating valid keypoints
+    "category": category,               # Object category string (e.g., "cat", "dog")
+    "pair_id": pair_id,                 # Unique identifier for the image pair
+    "src_scale": torch.tensor(src_scale, dtype=torch.float32),  # Scale factor for source image
+    "tgt_scale": torch.tensor(tgt_scale, dtype=torch.float32),  # Scale factor for target image
+    "src_orig_size": torch.tensor(src_orig_size, dtype=torch.int64),  # Original source size
+    "tgt_orig_size": torch.tensor(tgt_orig_size, dtype=torch.int64)  # Original target size
+}
 ```
 
-## 🤖 Models Module
+##  Models Module
 
 The `models/` folder contains the core implementation of backbone models, matching algorithms, and training components:
 
@@ -117,13 +128,12 @@ The `models/` folder contains the core implementation of backbone models, matchi
   - Handles model loading, preprocessing, and feature extraction
 
 - **`unified_backbone.py`**: Unified interface for all backbones
-  - Provides consistent API across different models
   - Handles backbone selection and initialization
   - Simplifies switching between models
 
 - **`matcher.py`**: Correspondence matching algorithms
-  - Argmax-based matching (baseline)
-  - Window soft-argmax matching (improved)
+  - Argmax-based matching 
+  - Window soft-argmax matching 
   - Cosine similarity computation
   - Sub-pixel refinement logic
 
@@ -135,7 +145,6 @@ The `models/` folder contains the core implementation of backbone models, matchi
 - **`evaluator.py`**: Evaluation pipeline
   - PCK@T metric computation
   - Per-keypoint and per-image evaluation
-  - Cross-dataset evaluation support
   - Results aggregation and reporting
 
 - **`loss.py`**: Loss functions
@@ -144,10 +153,7 @@ The `models/` folder contains the core implementation of backbone models, matchi
   - Custom loss implementations for semantic matching
 
 - **`config.py`**: Configuration classes
-  - Model hyperparameters
-  - Training configurations
-  - Evaluation settings
-  - Dataset-specific parameters
+  - Backbones configurations
 
 ### Usage Example
 
@@ -156,29 +162,51 @@ from models.unified_backbone import UnifiedBackbone
 from models.matcher import SemanticMatcher
 from models.evaluator import Evaluator
 
+# Definition of backbones, finetuning, dataset and prediction method
+backbone_choice = 'dinov2'  # 'dinov2', 'dinov3', 'sam'
+finetune_choice = False     # True, False
+soft_argmax_choice = False  # True, False
+dataset_choice = 'spair'    # 'spair', 'pfwillow'
+
+
 # Initialize backbone
 backbone = UnifiedBackbone(
-    model_name='dinov2',
-    num_layers_to_finetune=2
+  backbone_choice=backbone_choice,
+  finetune_choice=finetune_choice, 
+  checkpoint_dir=CHECKPOINT_DIR,
+  device=device
 )
 
 # Initialize matcher
-matcher = SemanticMatcher(
-    method='soft_argmax',
-    window_size=5
+matcher = CorrespondenceMatcher(
+  backbone=backbone,
+  use_soft_argmax=soft_argmax_choice
+)
+
+# Initialize evaluator
+evaluator = UnifiedEvaluator(
+  dataloader=test_loader,
+  device=device,
+  thresholds=[0.05, 0.10, 0.15, 0.20]
 )
 
 # Extract features and match
-src_features = backbone.extract_features(src_img)
-tgt_features = backbone.extract_features(tgt_img)
-predictions = matcher.match(src_features, tgt_features, src_kps)
+src_feat = self.backbone.extract_features(src_img)[0]
+tgt_feat = self.backbone.extract_features(tgt_img)[0]
 
-# Evaluate
-evaluator = Evaluator(thresholds=[0.05, 0.1, 0.15, 0.2])
-pck_scores = evaluator.compute_pck(predictions, tgt_kps)
+tgt_kps_pred = matcher.match(src_img, tgt_img, src_kps_valid)
+
+# Compute PCK across multiple thresholds
+pck_scores = compute_pck(
+  tgt_kps_pred_orig, 
+  tgt_kps_gt_orig, 
+  bbox_size=bbox_size,              
+  image_size=(H_orig, W_orig),
+  thresholds=self.thresholds
+)
 ```
 
-## 🛠️ Utils Module
+## Utils Module
 
 The `utils/` folder contains utility functions for metrics and evaluation:
 
@@ -187,71 +215,41 @@ The `utils/` folder contains utility functions for metrics and evaluation:
 - **`__init__.py`**: Package initialization
 - **`pck.py`**: PCK (Percentage of Correct Keypoints) metric implementation
   - Computes PCK@T for multiple thresholds simultaneously
-  - Handles normalized distance calculation using bounding box or image size
-  - Returns per-threshold results in a dictionary format
-  - Supports batch evaluation across multiple image pairs
+  - **Dual normalization support**: bounding box or image dimensions
+  - Returns per-threshold results as tuples: `(valid_mask, accuracy)`
+  - `valid_mask`: (N,) binary tensor indicating which keypoints are correct
+  - `accuracy`: float, mean accuracy for this threshold
 
-### Usage Example
 
-```python
-from utils.pck import compute_pck
-
-# Compute PCK across multiple thresholds
-pck_results = compute_pck(
-    pred_kps=predicted_kps,        # (N, 2) predicted keypoints
-    gt_kps=ground_truth_kps,       # (N, 2) ground truth keypoints
-    bbox_size=(height, width),     # Bounding box for normalization
-    thresholds=[0.05, 0.10, 0.15, 0.20]
-)
-
-# Access results
-for metric, (correct_mask, accuracy) in pck_results.items():
-    print(f"{metric}: {accuracy:.4f}")
-    # correct_mask: (N,) binary tensor indicating which keypoints are correct
-    # accuracy: float, mean accuracy for this threshold
-```
-
-## 📓 Notebooks Module
+##  Notebooks Module
 
 The `notebooks/` folder contains Jupyter notebooks for interactive experimentation and analysis:
 
 ### Files Description
 
+- **`eval.ipynb`**: Evaluation and analysis
+  - **Configuration** : Select backbone, finetuning, soft-argmax, dataset
+  - Model evaluation on SPair-71k/PF-Willow test set
+  - PCK metric computation (per-keypoint and per-image)
+  - Results visualization
+  - Results saved as JSON files
+
+
 - **`train.ipynb`**: Training pipeline and experiments
-  - Step-by-step training workflow
+  - **Training modes**: fresh, resume, continue
   - Baseline model training (frozen features)
   - Fine-tuning experiments with different layer configurations
   - Hyperparameter exploration
   - Training visualization and logging
-  - Model checkpoint management
-  - Comparative analysis across backbones (DINOv2, DINOv3, SAM)
+  - Model checkpoint management (saves optimizer, scheduler, scaler state)
 
-- **`eval.ipynb`**: Evaluation and analysis
-  - Model evaluation on SPair-71k validation set
-  - Cross-dataset evaluation on PF-Willow
-  - PCK metric computation and visualization
-  - Per-category performance breakdown
-  - Qualitative results visualization
-  - Error analysis and failure case inspection
-  - Comparison of argmax vs. soft-argmax matching
-  - Cross-backbone performance comparison
-
-### Usage
-
-```bash
-# Start Jupyter notebook server
-jupyter notebook
-
-# Navigate to notebooks/ folder and open desired notebook
-```
-
-## 🔬 Methodology
+##  Methodology
 
 ### 1. Training-Free Baseline
 - Extract dense features from frozen pretrained backbones (DINOv2, DINOv3, SAM)
 - Compute cosine similarity between source keypoint features and all target patches
 - Select the location with highest similarity (argmax) as the predicted match
-- **Evaluation**: Test on SPair-71k validation set
+- **Evaluation**: Test on SPair-71k test set
 - **Implementation**: `models/backbones.py`, `models/matcher.py`
 - **Notebook**: `notebooks/eval.ipynb`
 
@@ -278,37 +276,25 @@ jupyter notebook
 - **Training**: Fine-tune DINOv2, DINOv3, and SAM on SPair-71k
 - **Evaluation**: Test all three fine-tuned models on PF-Willow dataset
 - **Comparison**: Analyze performance differences between:
-  - In-domain evaluation (SPair → SPair)
   - Cross-domain evaluation (SPair → Willow)
 - **Implementation**: `models/evaluator.py`, `utils/pck.py`
 - **Notebook**: `notebooks/eval.ipynb`
 
-**Research Questions**:
-1. Which backbone generalizes best to PF-Willow after SPair-71k fine-tuning?
-2. How much does performance degrade when transferring across datasets?
-3. Are certain object categories more robust to domain shift?
-4. Does fine-tuning improve or hurt cross-dataset generalization compared to frozen features?
 
-**Analysis Dimensions**:
-- Per-backbone comparison (DINOv2 vs DINOv3 vs SAM)
-- Per-category analysis (which objects transfer better)
-- Performance degradation: (SPair PCK) - (Willow PCK)
-- Comparison with training-free baseline on both datasets
-
-**Expected Insights**:
-- Understand which visual foundation model learns more generalizable semantic features
-- Identify potential overfitting to SPair-71k characteristics
-- Guide model selection for real-world deployment scenarios
-
-## 📊 Evaluation Metrics
+## Evaluation Metrics
 
 **PCK@T (Percentage of Correct Keypoints)**: Measures the percentage of predicted keypoints within a normalized distance T from ground truth.
 
 **Formula**: A keypoint is correct if `||pred_kp - gt_kp||_2 <= T * max(H, W)`
 
 - Multiple thresholds evaluated: 0.05, 0.10, 0.15, 0.20
-- Normalization by maximum dimension of bounding box or image
-- Results reported per keypoint and per image
+- **Two evaluation modes**:
+  - **Per-keypoint**: Individual keypoint accuracy (default, aligns with SPair-71k benchmark)
+  - **Per-image**: Average accuracy across all keypoints in an image
+- **Normalization strategies**:
+  - Primary: Bounding box dimensions (when available)
+  - Fallback: Original image dimensions (preserves aspect ratio, not resized)
+- Results reported with mean and standard deviation
 - Analysis across object categories and difficulty levels
 
 **Evaluation Protocol**:
@@ -316,24 +302,16 @@ jupyter notebook
 - **Cross-domain** (Extension): SPair-71k train → PF-Willow test
 - **Backbone comparison**: DINOv2, DINOv3, SAM on both evaluation sets
 
-**Implementation**: `utils/pck.py`, `models/evaluator.py`
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Installation
 
-1. **Clone the repository**:
+1. **Setup environment**:
 ```bash
-git clone https://github.com/yourusername/AML_SemanticCorrespondence.git
+git clone https://github.com/SamueleCarrea/AML_SemanticCorrespondence.git
 cd AML_SemanticCorrespondence
 ```
-
-2. **Install dependencies**:
-```bash
-pip install -r requirements.txt
-```
-
-**Note**: This project is optimized for Google Colab. Some dependencies (PyTorch, NumPy) are commented out in `requirements.txt` as they come pre-installed in Colab environments.
 
 ### Key Dependencies
 
@@ -352,28 +330,14 @@ pip install -r requirements.txt
 
 **Training**:
 ```bash
-# Open train.ipynb in Jupyter or Colab
+# Open train.ipynb in Jupyter
 jupyter notebook notebooks/train.ipynb
 ```
 
 **Evaluation**:
 ```bash
-# Open eval.ipynb in Jupyter or Colab
+# Open eval.ipynb in Jupyter
 jupyter notebook notebooks/eval.ipynb
 ```
 
-### Google Colab Setup
-
-```python
-# Mount Google Drive (optional, for dataset storage)
-from google.colab import drive
-drive.mount('/content/drive')
-
-# Install requirements
-!pip install -r requirements.txt
-
-# Import modules
-from dataset.spair import SPairDataset
-from models.unified_backbone import UnifiedBackbone
-```
 

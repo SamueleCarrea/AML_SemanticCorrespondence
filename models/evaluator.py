@@ -113,8 +113,8 @@ class UnifiedEvaluator:
             pck_scores = compute_pck(
                 tgt_kps_pred_orig, 
                 tgt_kps_gt_orig, 
-                bbox_size=bbox_size,              # ✅ Bbox in original coords (if available)
-                image_size=(H_orig, W_orig),      # ✅ CRITICAL: Use original size!
+                bbox_size=bbox_size,              #  Bbox in original coords (if available)
+                image_size=(H_orig, W_orig),      #  Use original size
                 thresholds=self.thresholds
             )
 
@@ -210,7 +210,7 @@ class UnifiedEvaluator:
             print(f"   [Image] {metric}: {mean_val:.4f} ± {std_val:.4f} ({mean_val*100:.2f}%)")
 
         print(f"\n   ⏱ Avg inference time: {results['inference_time_ms']:.2f} ms/pair")
-        print(f"   📊 Evaluated on {results['num_pairs']} pairs")
+        print(f"    Evaluated on {results['num_pairs']} pairs")
 
     # def create_comparison_table(self) -> pd.DataFrame:
     #     """Create comparison DataFrame from all results."""
