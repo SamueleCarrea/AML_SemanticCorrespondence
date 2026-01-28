@@ -97,9 +97,6 @@ class UnifiedEvaluator:
             tgt_kps_pred = matcher.match(src_img, tgt_img, src_kps_valid)
             inference_times.append(time.time() - start)
 
-            tgt_kps_pred_orig = tgt_kps_pred / tgt_scale
-            tgt_kps_gt_orig = tgt_kps_valid / tgt_scale
-
             H_orig, W_orig = tgt_orig_size.tolist()
             
             bbox_size = None
@@ -111,6 +108,8 @@ class UnifiedEvaluator:
                 if bbox_h > 0 and bbox_w > 0:
                     bbox_size = (bbox_h, bbox_w)
             
+            tgt_kps_pred_orig = (tgt_kps_pred / tgt_scale).detach().cpu()
+            tgt_kps_gt_orig   = (tgt_kps_valid / tgt_scale).detach().cpu()
             pck_scores = compute_pck(
                 tgt_kps_pred_orig, 
                 tgt_kps_gt_orig, 
