@@ -64,9 +64,9 @@ class UnifiedEvaluator:
         was_training = matcher.backbone.training
         matcher.backbone.eval()
 
+        nks_total = 0
         # Evaluation loop
         pbar = tqdm(self.dataloader, desc=backbone_name) if show_progress else self.dataloader
-        nks_total = 0
         for batch in pbar:
             if num_samples and n_processed >= num_samples:
                 break
@@ -109,7 +109,7 @@ class UnifiedEvaluator:
                 if bbox_h > 0 and bbox_w > 0:
                     bbox_size = (bbox_h, bbox_w)
             
-            pck_scores, nks = compute_pck(
+            pck_scores = compute_pck(
                 tgt_kps_pred_orig, 
                 tgt_kps_gt_orig, 
                 bbox_size=bbox_size,              # ✅ Bbox in original coords (if available)
@@ -119,10 +119,9 @@ class UnifiedEvaluator:
 
             # Store results
             for metric, value in pck_scores.items():
-                all_pck[metric].append(value*nks)
-                per_category[category][metric].append(value)
-
-            nks_total += nks
+                all_pck[metric].extend(value.cpu().tolist())
+                per_category[category][metric].extend(value.cpu().tolist())
+            nks_total += len(tgt_kps_valid)
             n_processed += 1
 
             # Update progress
@@ -161,18 +160,18 @@ class UnifiedEvaluator:
 
         # Overall metrics
         for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
-            values = all_pck[metric] / nks_total
+            values = np.array(all_pck[metric])  # Array di 0/1 per tutti i keypoint
             results['overall'][metric] = {
-                'mean': np.mean(values),
-                'std': np.std(values),
+                'mean': values.mean().item(),
+                'std': values.std().item(),
             }
 
         # Per-category metrics
         for cat, metrics in per_category.items():
             results['per_category'][cat] = {}
             for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
-                results['per_category'][cat][metric] = np.mean(metrics[metric])
-
+                per_cat_values = np.array(metrics[metric])
+                results['per_category'][cat][metric] = per_cat_values.mean().item()
         return results
 
     def _print_summary(self, results):
