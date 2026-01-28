@@ -106,10 +106,12 @@ class CorrespondenceLoss(nn.Module):
                         src_vec.unsqueeze(0), tgt_vec.unsqueeze(0), dim=1
                     )
 
-                    # Negatives: sample random points from target
-                    neg_indices = torch.randint(
-                        0, H_t * W_t, (8,), device=src_vec.device
-                    )
+                    # Negatives: sample random points from target, excluding the positive
+                    pos_index = tgt_y * W_t + tgt_x
+                    all_indices = torch.arange(H_t * W_t, device=src_vec.device)
+                    valid_neg_indices = all_indices[all_indices != pos_index]
+                    neg_perm = torch.randperm(valid_neg_indices.shape[0], device=src_vec.device)[:8]
+                    neg_indices = valid_neg_indices[neg_perm]
                     tgt_flat = tgt_feat.reshape(-1, D)
                     neg_vecs = tgt_flat[neg_indices]  # (8, D)
 
