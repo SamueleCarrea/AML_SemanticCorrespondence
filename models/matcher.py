@@ -42,8 +42,10 @@ class CorrespondenceMatcher:
         H_t, W_t, _ = tgt_feat.shape
         patch_size = self.backbone.config.patch_size
 
+
         # Convert keypoint coords to patch indices
-        src_kps_patch = (src_kps / patch_size + 0.5).long()
+        src_kps = src_kps.to(self.device)
+        src_kps_patch = (src_kps / patch_size).long()
         src_kps_patch[:, 0] = src_kps_patch[:, 0].clamp(0, W_s - 1)
         src_kps_patch[:, 1] = src_kps_patch[:, 1].clamp(0, H_s - 1)
 
@@ -52,9 +54,9 @@ class CorrespondenceMatcher:
         tgt_kps_pred = torch.zeros(N, 2, device=src_kps.device)
 
         for i in range(N):
-            x, y = src_kps_patch[i]
-            src_vec = src_feat[y, x]  # (D,)
-
+            x = int(src_kps_patch[i, 0].item())
+            y = int(src_kps_patch[i, 1].item())
+            src_vec = src_feat[y, x]
             # Cosine similarity
             similarity = F.cosine_similarity(
                 src_vec.view(1, 1, 1, D),

@@ -9,7 +9,7 @@ def compute_pck(
     image_size: Optional[Tuple[int, int]] = None,
     bbox_size: Optional[Tuple[int, int]] = None,
     thresholds: List[float] = [0.05, 0.10, 0.15, 0.20],
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tuple[torch.Tensor, float]]:
     """Compute Percentage of Correct Keypoints (PCK) metric.
 
     A predicted keypoint is correct if:
@@ -51,7 +51,7 @@ def compute_pck(
     results = {}
     for threshold in thresholds:
         correct = (normalized_distances <= threshold).float()
-        results[f"PCK@{threshold:.2f}"] = correct
+        results[f"PCK@{threshold:.2f}"] = (correct, correct.mean().item())
 
     return results
 

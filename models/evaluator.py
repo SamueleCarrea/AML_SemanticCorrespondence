@@ -55,8 +55,10 @@ class UnifiedEvaluator:
         print('='*70)
 
         # Storage
-        all_pck = defaultdict(list)
-        per_category = defaultdict(lambda: defaultdict(list))
+        per_keypoint = defaultdict(list)
+        per_cat_keypoint = defaultdict(lambda: defaultdict(list))
+        per_cat_image = defaultdict(lambda: defaultdict(list))
+        per_image = defaultdict(list)
         inference_times = []
         n_processed = 0
 
@@ -119,19 +121,21 @@ class UnifiedEvaluator:
 
             # Store results
             for metric, value in pck_scores.items():
-                all_pck[metric].extend(value.cpu().tolist())
-                per_category[category][metric].extend(value.cpu().tolist())
+                per_keypoint[metric].extend(value[0].cpu().tolist())
+                per_cat_keypoint[category][metric].extend(value[0].cpu().tolist())
+                per_cat_image[category][metric].append(value[1])
+                per_image[metric].append(value[1])
             nks_total += len(tgt_kps_valid)
             n_processed += 1
 
             # Update progress
-            if show_progress and len(all_pck['PCK@0.10']) > 0:
-                avg_pck = np.mean(all_pck['PCK@0.10'])
+            if show_progress and len(per_keypoint['PCK@0.10']) > 0:
+                avg_pck = np.mean(per_keypoint['PCK@0.10'])
                 pbar.set_postfix({'PCK@0.10': f'{avg_pck:.4f}'})
 
         # Aggregate results
         results = self._aggregate_results(
-            backbone_name, all_pck, per_category, inference_times, n_processed, nks_total
+            backbone_name, per_keypoint, per_cat_keypoint, per_cat_image, per_image, inference_times, n_processed, nks_total
         )
 
         self.results[backbone_name] = results
@@ -142,36 +146,52 @@ class UnifiedEvaluator:
             matcher.backbone.train()
         
         # Cleanup
-        del matcher.backbone
         torch.cuda.empty_cache()
 
         return results
 
-    def _aggregate_results(self, name, all_pck, per_category, times, n_pairs, nks_total):
+    def _aggregate_results(self, name, per_keypoint, per_cat_keypoint, per_cat_image, per_image, times, n_pairs, nks_total):
         """Aggregate metrics into structured results."""
         
         results = {
             'name': name,
             'num_pairs': n_pairs,
             'inference_time_ms': np.mean(times) * 1000 if times else 0,
-            'overall': {},
-            'per_category': {}
+            'overall_keypoint': {},
+            'per_category_keypoint': {},
+            'overall_image': {},
+            'per_category_image': {}
         }
 
-        # Overall metrics
+        # Overall metrics per keypoint
         for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
-            values = np.array(all_pck[metric])  # Array di 0/1 per tutti i keypoint
-            results['overall'][metric] = {
+            values = np.array(per_keypoint[metric])  # Array di 0/1 per tutti i keypoint
+            results['overall_keypoint'][metric] = {
                 'mean': values.mean().item(),
                 'std': values.std().item(),
             }
 
-        # Per-category metrics
-        for cat, metrics in per_category.items():
-            results['per_category'][cat] = {}
+        # Per-category metrics per keypoint
+        for cat, metrics in per_cat_keypoint.items():
+            results['per_category_keypoint'][cat] = {}
             for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
                 per_cat_values = np.array(metrics[metric])
-                results['per_category'][cat][metric] = per_cat_values.mean().item()
+                results['per_category_keypoint'][cat][metric] = per_cat_values.mean().item()
+
+        # Overall metrics per image
+        for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
+            values = np.array(per_image[metric])  # Array di 0/1 per tutte le immagini
+            results['overall_image'][metric] = {
+                'mean': values.mean().item(),
+                'std': values.std().item(),
+            }
+        # Per-category metrics per image
+        for cat, metrics in per_cat_image.items():
+            results['per_category_image'][cat] = {}
+            for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
+                per_cat_values = np.array(metrics[metric])
+                results['per_category_image'][cat][metric] = per_cat_values.mean().item()
+                
         return results
 
     def _print_summary(self, results):
@@ -180,40 +200,46 @@ class UnifiedEvaluator:
         print(f"\n{results['name']} Results:")
         print("-" * 70)
 
-        for metric, values in results['overall'].items():
+        for metric, values in results['overall_keypoint'].items():
             mean_val = values['mean']
             std_val = values['std']
             print(f"   {metric}: {mean_val:.4f} ± {std_val:.4f} ({mean_val*100:.2f}%)")
+        
+        for metric, values in results['overall_image'].items():
+            mean_val = values['mean']
+            std_val = values['std']
+            print(f"   [Image] {metric}: {mean_val:.4f} ± {std_val:.4f} ({mean_val*100:.2f}%)")
 
         print(f"\n   ⏱ Avg inference time: {results['inference_time_ms']:.2f} ms/pair")
         print(f"   📊 Evaluated on {results['num_pairs']} pairs")
 
-    def create_comparison_table(self) -> pd.DataFrame:
-        """Create comparison DataFrame from all results."""
+    # def create_comparison_table(self) -> pd.DataFrame:
+    #     """Create comparison DataFrame from all results."""
         
-        if not self.results:
-            print(" No evaluation results yet")
-            return None
+    #     if not self.results:
+    #         print(" No evaluation results yet")
+    #         return None
 
-        rows = []
-        for name, res in self.results.items():
-            row = {
-                'Backbone': res['name'],
-                'Pairs': res['num_pairs'],
-                'Time (ms)': f"{res['inference_time_ms']:.1f}",
-            }
+    #     rows = []
+    #     for name, res in self.results.items():
+    #         row = {
+    #             'Backbone': res['name'],
+    #             'Pairs': res['num_pairs'],
+    #             'Time (ms)': f"{res['inference_time_ms']:.1f}",
+    #         }
 
-            for metric, vals in res['overall'].items():
-                row[metric] = f"{vals['mean']:.4f}"
+    #         for metric, vals in res['overall'].items():
+    #             row[metric] = f"{vals['mean']:.4f}"
+            
 
-            rows.append(row)
+    #         rows.append(row)
 
-        df = pd.DataFrame(rows)
+    #     df = pd.DataFrame(rows)
 
-        print("\n" + "="*70)
-        print("FINAL COMPARISON")
-        print("="*70)
-        print(df.to_string(index=False))
-        print("="*70)
+    #     print("\n" + "="*70)
+    #     print("FINAL COMPARISON")
+    #     print("="*70)
+    #     print(df.to_string(index=False))
+    #     print("="*70)
 
-        return df
+    #     return df
