@@ -8,5 +8,4 @@ venv/
 .ipynb_checkpoints/
 outputs/
 checkpoints/
-results/
 .DS_Store
