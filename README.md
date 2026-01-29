@@ -44,6 +44,9 @@ AML_SemanticCorrespondence/
 ├── notebooks/                  # Jupyter notebooks for experiments
 │   ├── train.ipynb            # Training pipeline and experiments
 │   └── eval.ipynb             # Evaluation and analysis
+├── results/                   # Results of evaluation
+|   ├── pf_willow_results/     # Results on pf-willow dataset
+|   └── spair-71k_results/     # Results on SPair-71k dataset
 ├── requirements.txt            # Project dependencies
 └── README.md                   # This file
 ```
@@ -243,6 +246,15 @@ The `notebooks/` folder contains Jupyter notebooks for interactive experimentati
   - Hyperparameter exploration
   - Training visualization and logging
   - Model checkpoint management (saves optimizer, scheduler, scaler state)
+
+## Results Module
+
+The `results/` folder contains evaluation results stored in JSON format:
+
+- **`pf_willow_results/`**: Evaluation results on PF-Willow dataset
+- **`spair-71k_results/`**: Evaluation results on SPair-71k dataset
+
+Each JSON file captures PCK@T metrics for different model configurations (backbone, finetuning, prediction method).
 
 ##  Methodology
 
