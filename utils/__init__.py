@@ -1,3 +1,5 @@
-"""Utility package for visualization and synthetic sample generation."""
+from .pck import compute_pck
 
-__all__ = ["vis", "data"]
+__all__ = [
+    "compute_pck",
+]

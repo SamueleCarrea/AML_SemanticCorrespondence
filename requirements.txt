@@ -49,3 +49,6 @@ black>=23.3.0
 ruff>=0.0.270
 # ipykernel - già installato in Colab
 # jupyter-client - già installato in Colab
+
+wandb>=0.15.0
+tensorboard>=2.13.0
