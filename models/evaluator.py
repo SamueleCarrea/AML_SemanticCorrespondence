@@ -1,8 +1,5 @@
-"""Unified evaluation engine."""
-
 import torch
 import numpy as np
-import pandas as pd
 from typing import Dict, List
 from collections import defaultdict
 from tqdm import tqdm
@@ -164,7 +161,7 @@ class UnifiedEvaluator:
 
         # Overall metrics per keypoint
         for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
-            values = np.array(per_keypoint[metric])  # Array di 0/1 per tutti i keypoint
+            values = np.array(per_keypoint[metric])  # Array of 0/1 for all keypoints
             results['overall_keypoint'][metric] = {
                 'mean': values.mean().item(),
                 'std': values.std().item(),
@@ -179,7 +176,7 @@ class UnifiedEvaluator:
 
         # Overall metrics per image
         for metric in [f'PCK@{t:.2f}' for t in self.thresholds]:
-            values = np.array(per_image[metric])  # Array di 0/1 per tutte le immagini
+            values = np.array(per_image[metric])  # Array of 0/1 for all images
             results['overall_image'][metric] = {
                 'mean': values.mean().item(),
                 'std': values.std().item(),
@@ -209,36 +206,6 @@ class UnifiedEvaluator:
             std_val = values['std']
             print(f"   [Image] {metric}: {mean_val:.4f} ± {std_val:.4f} ({mean_val*100:.2f}%)")
 
-        print(f"\n   ⏱ Avg inference time: {results['inference_time_ms']:.2f} ms/pair")
+        print(f"\n   Avg inference time: {results['inference_time_ms']:.2f} ms/pair")
         print(f"    Evaluated on {results['num_pairs']} pairs")
 
-    # def create_comparison_table(self) -> pd.DataFrame:
-    #     """Create comparison DataFrame from all results."""
-        
-    #     if not self.results:
-    #         print(" No evaluation results yet")
-    #         return None
-
-    #     rows = []
-    #     for name, res in self.results.items():
-    #         row = {
-    #             'Backbone': res['name'],
-    #             'Pairs': res['num_pairs'],
-    #             'Time (ms)': f"{res['inference_time_ms']:.1f}",
-    #         }
-
-    #         for metric, vals in res['overall'].items():
-    #             row[metric] = f"{vals['mean']:.4f}"
-            
-
-    #         rows.append(row)
-
-    #     df = pd.DataFrame(rows)
-
-    #     print("\n" + "="*70)
-    #     print("FINAL COMPARISON")
-    #     print("="*70)
-    #     print(df.to_string(index=False))
-    #     print("="*70)
-
-    #     return df

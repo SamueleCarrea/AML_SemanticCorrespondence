@@ -23,13 +23,15 @@ def compute_pck(
         thresholds: List of normalized distance thresholds (e.g., 0.10 = 10%)
 
     Returns:
-        Dictionary mapping 'PCK@{threshold}' to accuracy value
-        and the number of keypoints evaluated
+        Dictionary mapping 'PCK@{threshold}' to tuple (valid_mask, accuracy):
+        - valid_mask: (N,) binary tensor indicating which keypoints are correct(1 if pred within threshold, 0 otherwise). Can be used to compute per-keypoint PCK.
+        - accuracy: float, mean accuracy across all keypoints for this threshold. Can be used to compute per-image PCK.
     Example:
         >>> pred = torch.tensor([[100.0, 150.0], [200.0, 250.0]])
         >>> gt = torch.tensor([[105.0, 155.0], [195.0, 245.0]])
         >>> pck = compute_pck(pred, gt, image_size=(480, 640))
-        >>> print(f"PCK@0.10: {pck['PCK@0.10']:.4f}")
+        >>> valid_mask, accuracy = pck['PCK@0.10']
+        >>> print(f"PCK@0.10: {accuracy:.4f}")
     """
     # Note: Both image_size and bbox_size expected in (H, W) format
     if bbox_size is not None:
@@ -54,73 +56,3 @@ def compute_pck(
         results[f"PCK@{threshold:.2f}"] = (correct, correct.mean().item())
 
     return results
-
-
-# def compute_pck_per_category(
-#     pred_kps_list: List[torch.Tensor],
-#     gt_kps_list: List[torch.Tensor],
-#     image_sizes: List[Tuple[int, int]],
-#     categories: List[str],
-#     thresholds: List[float] = [0.05, 0.10, 0.15, 0.20],
-# ) -> Dict[str, Dict[str, float]]:
-#     """Compute PCK metrics grouped by object category.
-
-#     Args:
-#         pred_kps_list: List of (N, 2) predicted keypoints tensors
-#         gt_kps_list: List of (N, 2) ground truth keypoints tensors
-#         image_sizes: List of (H, W) tuples
-#         categories: List of category names
-#         thresholds: List of PCK thresholds
-
-#     Returns:
-#         Dictionary mapping category -> {PCK@T metrics}
-
-#     Example:
-#         >>> results = compute_pck_per_category(preds, gts, sizes, cats)
-#         >>> print(results['cat']['PCK@0.10'])
-#     """
-#     from collections import defaultdict
-
-#     category_results = defaultdict(lambda: defaultdict(list))
-
-#     for pred, gt, size, cat in zip(pred_kps_list, gt_kps_list, image_sizes, categories):
-#         pck = compute_pck(pred, gt, image_size=size, thresholds=thresholds)
-#         for metric, value in pck.items():
-#             category_results[cat][metric].append(value)
-
-#     # Average per category
-#     final_results = {}
-#     for cat, metrics in category_results.items():
-#         final_results[cat] = {
-#             metric: sum(values) / len(values) for metric, values in metrics.items()
-#         }
-
-#     return final_results
-
-# def compute_pck_per_keypoint(
-#     pred_kps: torch.Tensor,
-#     gt_kps: torch.Tensor,
-#     image_size: tuple,
-#     thresholds: List[float] = [0.05, 0.10, 0.15, 0.20]
-# ) -> Dict[int, Dict[str, float]]:
-#     """
-#     Compute PCK per individual keypoint.
-
-#     Returns:
-#         Dictionary mapping keypoint_id -> {PCK@T metrics}
-#     """
-#     H, W = image_size
-#     max_dim = max(H, W)
-
-#     N = pred_kps.shape[0]
-#     distances = torch.norm(pred_kps - gt_kps, dim=1) / max_dim
-
-#     results = {}
-#     for i in range(N):
-#         kp_results = {}
-#         for t in thresholds:
-#             correct = (distances[i] <= t).float().item()
-#             kp_results[f'PCK@{t:.2f}'] = correct
-#         results[i] = kp_results
-
-#     return results

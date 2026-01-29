@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Tuple
 
 import torch
 from PIL import Image

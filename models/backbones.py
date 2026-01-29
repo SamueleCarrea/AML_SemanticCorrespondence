@@ -2,15 +2,12 @@
 
 Supports DINOv2, DINOv3, and SAM with automatic padding for variable image sizes.
 """
-import sys
-import os
-import re
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 import contextlib
 
 
@@ -31,9 +28,9 @@ def pad_to_patch_size(
 ) -> Tuple[torch.Tensor, Tuple[int, int, int, int]]:
     """Pad image to make dimensions divisible by patch_size."""
     if image.dim() == 3:
-        C, H, W = image.shape
+        _, H, W = image.shape
     elif image.dim() == 4:
-        B, C, H, W = image.shape
+        _, _, H, W = image.shape
     else:
         raise ValueError(f"Expected 3D or 4D tensor, got {image.dim()}D")
     
@@ -80,7 +77,7 @@ def unpad_features(
     patch_pad_top = pad_top // patch_size
     patch_pad_bottom = pad_bottom // patch_size
     
-    B, C, H, W = features.shape
+    _, _, H, W = features.shape
     
     h_start = patch_pad_top
     h_end = H - patch_pad_bottom if patch_pad_bottom > 0 else H
@@ -139,14 +136,14 @@ class _BaseExtractor(nn.Module):
         # Convert to (B, D, H, W) for unpad_features
         if features.dim() == 4 and features.shape[-1] != features.shape[1]:
             # Assume (B, H, W, D) format from DINO
-            features = features.permute(0, 3, 1, 2)  # → (B, D, H, W)
+            features = features.permute(0, 3, 1, 2)  # to (B, D, H, W)
             
         features = unpad_features(features, padding, patch_size=self.stride)
         
         # Convert back to (B, H, W, D)
         if features.shape[1] > features.shape[-1]:
             # Was in (B, D, H, W), convert back
-            features = features.permute(0, 2, 3, 1)  # → (B, H, W, D)
+            features = features.permute(0, 2, 3, 1)  # to (B, H, W, D)
         
         if return_padding:
             return features, self.stride, padding
@@ -317,9 +314,9 @@ class SAMImageEncoder(nn.Module):
             if image.dim() == 3:
                 image = image.unsqueeze(0)
 
-            B, C, orig_H, orig_W = image.shape
+            _, _, orig_H, orig_W = image.shape
 
-            # Padda direttamente a 1024×1024 (senza resize)
+            # Pad directly to 1024x1024 (no resize)
             pad_h = self.img_size - orig_H
             pad_w = self.img_size - orig_W
             
@@ -340,7 +337,7 @@ class SAMImageEncoder(nn.Module):
             # Extract features
             features = self._forward_features(padded_img)  # (B, D, 64, 64)
             
-            # Rimuovi padding dalle features
+            # Remove padding from features
             patch_pad_left = pad_left // self.stride
             patch_pad_right = pad_right // self.stride
             patch_pad_top = pad_top // self.stride

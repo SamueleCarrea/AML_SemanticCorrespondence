@@ -39,7 +39,7 @@ class CorrespondenceMatcher:
         src_feat = self.backbone.extract_features(src_img)[0]  # (H_s, W_s, D)
         tgt_feat = self.backbone.extract_features(tgt_img)[0]  # (H_t, W_t, D)
         H_s, W_s, D = src_feat.shape
-        H_t, W_t, _ = tgt_feat.shape
+        _, W_t, _ = tgt_feat.shape
         patch_size = self.backbone.config.patch_size
 
 

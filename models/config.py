@@ -1,5 +1,3 @@
-"""Backbone configuration and registry."""
-
 from dataclasses import dataclass
 from typing import Dict
 

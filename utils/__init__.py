@@ -1,5 +1,3 @@
-"""Model components."""
-
 from .pck import compute_pck
 
 __all__ = [

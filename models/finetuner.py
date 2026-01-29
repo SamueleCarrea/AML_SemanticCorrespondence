@@ -1,9 +1,6 @@
-"""Fine-tunable backbone wrappers for semantic correspondence."""
-
 from __future__ import annotations
 import torch
 import torch.nn as nn
-from typing import Optional
 from .backbones import DINOv2Extractor, DINOv3Extractor, SAMImageEncoder
 
 class FinetunableBackbone(nn.Module):
@@ -108,7 +105,7 @@ class FinetunableBackbone(nn.Module):
             tried.append("gradient_checkpointing_enable")
             try:
                 m.gradient_checkpointing_enable()
-                print("✓ Gradient checkpointing enabled via .gradient_checkpointing_enable()")
+                print("Gradient checkpointing enabled via .gradient_checkpointing_enable().")
                 return
             except Exception as e:
                 print(f"! gradient_checkpointing_enable failed: {e}")
@@ -117,30 +114,30 @@ class FinetunableBackbone(nn.Module):
             tried.append("set_grad_checkpointing")
             try:
                 m.set_grad_checkpointing(True)
-                print("✓ Gradient checkpointing enabled via .set_grad_checkpointing(True)")
+                print("Gradient checkpointing enabled via .set_grad_checkpointing(True).")
                 return
             except Exception as e:
-                print(f"! set_grad_checkpointing failed: {e}")
+                print(f"WARNING: set_grad_checkpointing failed: {e}")
 
         if hasattr(m, "set_gradient_checkpointing"):
             tried.append("set_gradient_checkpointing")
             try:
                 m.set_gradient_checkpointing(True)
-                print("✓ Gradient checkpointing enabled via .set_gradient_checkpointing(True)")
+                print("Gradient checkpointing enabled via .set_gradient_checkpointing(True).")
                 return
             except Exception as e:
-                print(f"! set_gradient_checkpointing failed: {e}")
+                print(f"WARNING: set_gradient_checkpointing failed: {e}")
 
         if hasattr(m, "use_checkpoint"):
             tried.append("use_checkpoint")
             try:
                 m.use_checkpoint = True
-                print("✓ Gradient checkpointing enabled via .use_checkpoint=True")
+                print("Gradient checkpointing enabled via .use_checkpoint=True.")
                 return
             except Exception as e:
-                print(f"! use_checkpoint flag failed: {e}")
+                print(f"WARNING: use_checkpoint flag failed: {e}")
 
-        print("! Gradient checkpointing requested but no supported API was found on this backbone.")
+        print("WARNING: Gradient checkpointing requested but no supported API was found on this backbone.")
         if tried:
             print("  Tried:", tried)
 

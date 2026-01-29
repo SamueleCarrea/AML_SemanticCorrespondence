@@ -78,8 +78,8 @@ Each dataset provides image pairs with:
 ### Usage Example
 
 ```python
-from dataset.spair import SPairDataset
-from dataset.willow import WillowDataset
+from dataset import SPairDataset
+from dataset import PFWillowDataset
 
 # Load SPair-71k dataset for training
 train_dataset_full = SPairDataset(
@@ -155,12 +155,28 @@ The `models/` folder contains the core implementation of backbone models, matchi
 - **`config.py`**: Configuration classes
   - Backbones configurations
 
+## Utils Module
+
+The `utils/` folder contains utility functions for metrics and evaluation:
+
+### Files Description
+
+- **`__init__.py`**: Package initialization
+- **`pck.py`**: PCK (Percentage of Correct Keypoints) metric implementation
+  - Computes PCK@T for multiple thresholds simultaneously
+  - **Dual normalization support**: bounding box or image dimensions
+  - Returns per-threshold results as tuples: `(valid_mask, accuracy)`
+  - `valid_mask`: (N,) binary tensor indicating which keypoints are correct
+  - `accuracy`: float, mean accuracy for this threshold
+
+
 ### Usage Example
 
 ```python
-from models.unified_backbone import UnifiedBackbone
-from models.matcher import SemanticMatcher
-from models.evaluator import Evaluator
+from models import UnifiedBackbone
+from models import CorrespondenceMatcher
+from models import UnifiedEvaluator
+from utils import compute_pck
 
 # Definition of backbones, finetuning, dataset and prediction method
 backbone_choice = 'dinov2'  # 'dinov2', 'dinov3', 'sam'
@@ -206,21 +222,6 @@ pck_scores = compute_pck(
 )
 ```
 
-## Utils Module
-
-The `utils/` folder contains utility functions for metrics and evaluation:
-
-### Files Description
-
-- **`__init__.py`**: Package initialization
-- **`pck.py`**: PCK (Percentage of Correct Keypoints) metric implementation
-  - Computes PCK@T for multiple thresholds simultaneously
-  - **Dual normalization support**: bounding box or image dimensions
-  - Returns per-threshold results as tuples: `(valid_mask, accuracy)`
-  - `valid_mask`: (N,) binary tensor indicating which keypoints are correct
-  - `accuracy`: float, mean accuracy for this threshold
-
-
 ##  Notebooks Module
 
 The `notebooks/` folder contains Jupyter notebooks for interactive experimentation and analysis:
@@ -250,8 +251,13 @@ The `notebooks/` folder contains Jupyter notebooks for interactive experimentati
 - Compute cosine similarity between source keypoint features and all target patches
 - Select the location with highest similarity (argmax) as the predicted match
 - **Evaluation**: Test on SPair-71k test set
-- **Implementation**: `models/backbones.py`, `models/matcher.py`
+- **Implementation**: `models/backbones.py`, `models/matcher.py`, `models/evaluator.py`, `utils/pck.py`
 - **Notebook**: `notebooks/eval.ipynb`
+- **Eval configuration (Cell 2)**:
+  - `backbone_choice`: `'dinov2'` | `'dinov3'` | `'sam'` (run one at a time)
+  - `finetune_choice`: `False`
+  - `soft_argmax_choice`: `False`
+  - `dataset_choice`: `'spair'`
 
 ### 2. Light Fine-tuning
 - Unfreeze and fine-tune the last N layers of each backbone (DINOv2, DINOv3, SAM)
@@ -260,6 +266,14 @@ The `notebooks/` folder contains Jupyter notebooks for interactive experimentati
 - **Evaluation**: Test on SPair-71k validation set
 - **Implementation**: `models/finetuner.py`, `models/loss.py`
 - **Notebook**: `notebooks/train.ipynb`
+- **Train configuration (Cell 3 – `FinetuneConfig`)**:
+  - **Backbone** (run separate experiments):
+    - DINOv2: `backbone_name = 'dinov2_vitb14'`
+    - DINOv3: `backbone_name = 'dinov3_vitb16'`
+    - SAM: `backbone_name = 'sam_vit_b'`
+  - **Unfreezing depth**: `num_layers_to_finetune = 1..N` (e.g. `2`)
+  - **Core params**: `num_epochs`, `learning_rate`, `weight_decay`, `warmup_epochs`, `loss_type`, `temperature`
+  - **Data**: `batch_size`, `num_workers`, `max_train_pairs`, `max_val_pairs`
 
 ### 3. Window Soft-Argmax Prediction
 - Find peak location using standard argmax
@@ -268,6 +282,11 @@ The `notebooks/` folder contains Jupyter notebooks for interactive experimentati
 - **Evaluation**: Test on SPair-71k validation set
 - **Implementation**: `models/matcher.py`
 - **Notebook**: `notebooks/eval.ipynb`
+- **Eval configuration (Cell 2)**:
+  - `backbone_choice`: `'dinov2'` | `'dinov3'` | `'sam'` (run one at a time)
+  - `finetune_choice`: `False`
+  - `soft_argmax_choice`: `True`
+  - `dataset_choice`: `'spair'`
 
 ### 4. Cross-Dataset Generalization (Extension)
 **Goal**: Evaluate how well the three fine-tuned backbones generalize to a different dataset
@@ -277,8 +296,13 @@ The `notebooks/` folder contains Jupyter notebooks for interactive experimentati
 - **Evaluation**: Test all three fine-tuned models on PF-Willow dataset
 - **Comparison**: Analyze performance differences between:
   - Cross-domain evaluation (SPair → Willow)
-- **Implementation**: `models/evaluator.py`, `utils/pck.py`
+- **Implementation**: `models/evaluator.py`, `utils/pck.py`, `dataset/willow.py`
 - **Notebook**: `notebooks/eval.ipynb`
+- **Eval configuration (Cell 2)**:
+  - `backbone_choice`: `'dinov2'` | `'dinov3'` | `'sam'` (run one at a time)
+  - `finetune_choice`: `True` (uses fine-tuned checkpoints in `CHECKPOINT_DIR`)
+  - `soft_argmax_choice`: `False` (set `True` only if you want soft-argmax evaluation)
+  - `dataset_choice`: `'pfwillow'`
 
 
 ## Evaluation Metrics
@@ -301,43 +325,4 @@ The `notebooks/` folder contains Jupyter notebooks for interactive experimentati
 - **In-domain**: SPair-71k train → SPair-71k validation
 - **Cross-domain** (Extension): SPair-71k train → PF-Willow test
 - **Backbone comparison**: DINOv2, DINOv3, SAM on both evaluation sets
-
-
-##  Getting Started
-
-### Installation
-
-1. **Setup environment**:
-```bash
-git clone https://github.com/SamueleCarrea/AML_SemanticCorrespondence.git
-cd AML_SemanticCorrespondence
-```
-
-### Key Dependencies
-
-- **PyTorch Stack**: torch>=2.0.0, torchvision>=0.15.0
-- **Vision Models**: timm>=0.9.0, torchmetrics>=1.0.0
-- **Foundation Models**:
-  - DINOv2 (loaded via `torch.hub`)
-  - DINOv3 (via timm or torch.hub)
-  - SAM (optional, install separately if needed)
-- **Data Processing**: PIL, OpenCV, scikit-image
-- **Utilities**: einops, tqdm, omegaconf
-- **Visualization**: matplotlib, seaborn, plotly
-- **Experiment Tracking**: wandb, tensorboard
-
-### Running the Project
-
-**Training**:
-```bash
-# Open train.ipynb in Jupyter
-jupyter notebook notebooks/train.ipynb
-```
-
-**Evaluation**:
-```bash
-# Open eval.ipynb in Jupyter
-jupyter notebook notebooks/eval.ipynb
-```
-
 

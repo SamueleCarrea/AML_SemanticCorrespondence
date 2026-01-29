@@ -3,8 +3,7 @@
 import torch
 import torch.nn as nn
 from pathlib import Path
-from typing import Tuple
-
+import traceback
 from models.config import get_backbone_config
 from models.backbones import DINOv2Extractor, DINOv3Extractor, SAMImageEncoder
 
@@ -20,7 +19,7 @@ class UnifiedBackbone(nn.Module):
         device: str = 'cuda'
     ):
         """Initialize backbone with optional finetuned weights.
-        
+
         Args:
             backbone_choice: 'dinov2', 'dinov3', or 'sam'
             finetune_choice: If True, load finetuned weights
@@ -40,8 +39,8 @@ class UnifiedBackbone(nn.Module):
         
     def _load_extractor(self):
         """Instantiate and load the appropriate extractor."""
-        
-        print(f"→ Loading {self.config.name}...", end='')
+
+        print(f"Loading {self.config.name}...", end='')
         
         # Create extractor based on type
         if self.config.type == 'dinov2':
@@ -67,9 +66,8 @@ class UnifiedBackbone(nn.Module):
         if self.finetune_choice and self.checkpoint_dir:
             self._load_finetuned_weights()
         
-        print(f" ✓")
-        print(f"   • Patch size: {self.extractor.stride}")
-        print(f"   • Embedding: {self.config.embed_dim}D")
+        print(f"   Patch size: {self.extractor.stride}")
+        print(f"   Embedding: {self.config.embed_dim}D")
         
     def _load_finetuned_weights(self):
         """Load finetuned checkpoint if available."""
@@ -99,11 +97,7 @@ class UnifiedBackbone(nn.Module):
             else:
                 state_dict = checkpoint
 
-            # DEBUG: Print sample keys before conversion
-            print(f"\n   Original state_dict keys (first 5):")
-            for i, key in enumerate(list(state_dict.keys())[:5]):
-                print(f"     {key}")
-            
+            # Adjust keys of state_dict to match extractor
             new_state_dict = {}
             for key, value in state_dict.items():
                 if key.startswith('extractor.'):
@@ -111,40 +105,28 @@ class UnifiedBackbone(nn.Module):
                 if key.startswith('_model_for_unfreeze.'):
                     key = "model.image_encoder." + key[len("_model_for_unfreeze."):]
                 new_state_dict[key] = value
-
-            
-            # DEBUG: Print sample keys after conversion
-            print(f"\n   Converted state_dict keys (first 5):")
-            for i, key in enumerate(list(new_state_dict.keys())[:5]):
-                print(f"     {key}")
-            
-            # DEBUG: Print sample model keys
-            print(f"\n   Model expects keys (first 5):")
-            for i, key in enumerate(list(self.extractor.state_dict().keys())[:5]):
-                print(f"     {key}")
             
             # Load weights
             missing_keys, unexpected_keys = self.extractor.load_state_dict(new_state_dict, strict=False)
             
-            print(f"\n   ✓ Loaded {len(new_state_dict) - len(unexpected_keys)}/{len(new_state_dict)} keys")
+            print(f"\n   Loaded {len(new_state_dict) - len(unexpected_keys)}/{len(new_state_dict)} keys")
             if missing_keys:
-                print(f"   ⚠ Missing keys: {len(missing_keys)}")
+                print(f"   Missing keys: {len(missing_keys)}")
                 print(f"   First 5 missing keys:")
                 for k in list(missing_keys)[:5]:
                     print(f"     {k}")
             if unexpected_keys:
-                print(f"   ⚠ Unexpected keys: {len(unexpected_keys)}")
+                print(f"   Unexpected keys: {len(unexpected_keys)}")
                 print(f"   First 5 unexpected keys:")
                 for k in list(unexpected_keys)[:5]:
                     print(f"     {k}")
                     
         except Exception as e:
-            print(f"   ⚠ Failed to load finetuned weights: {e}")
+            print(f"   Failed to load finetuned weights: {e}")
             print(f"   Using pretrained weights instead")
-            import traceback
             traceback.print_exc()
 
     @torch.no_grad()
     def extract_features(self, image: torch.Tensor) -> torch.Tensor:
-        feat_map, stride = self.extractor.extract_feats(image)
+        feat_map, _ = self.extractor.extract_feats(image)
         return feat_map

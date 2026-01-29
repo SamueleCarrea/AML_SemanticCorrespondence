@@ -10,9 +10,7 @@ from torchvision import transforms
 
 class PFWillowDataset(Dataset):
     """PF-WILLOW dataset for semantic correspondence."""
-    
-    N_KEYPOINTS = 10
-    
+        
     def __init__(self, root, long_side=518, normalize=True):
         super().__init__()
         self.root = Path(root)

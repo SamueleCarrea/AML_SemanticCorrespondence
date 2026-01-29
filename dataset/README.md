@@ -460,7 +460,7 @@ data/
 -  **Challenging poses**: Significant viewpoint and deformation changes
 -  **Dense annotations**: 10 keypoints per object
 -  **Multiple variants**: Different sizes and configurations
-- ⚠️ **Only test split**: No training/validation data (zero-shot evaluation only)
+- **Only test split**: No training/validation data (zero-shot evaluation only)
 
 ---
 
